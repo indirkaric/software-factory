@@ -1,231 +1,259 @@
-# Software Factory za Java backend
+# Software Factory for Java Backends
 
-Software factory za Claude Code koji radi kroz GitHub issue-e jednog Spring
-Boot servisa. Označiš issue labelom `factory`, pokreneš `/factory run`, i agenti
-odluče da li se isplati graditi, napišu spec, napišu kod i testove po pravilima
-tvog `project-template`-a, puste `mvn verify`, reviewaju, i otvore PR koji
-zatvara issue. Approver sam merge-a ono u šta je siguran, a ostalo ostavlja
-tebi.
+> 🇧🇦 Bosanski: [README.bs.md](README.bs.md)
 
-Baziran na [zazencodes software-factory-claude-code-v2](https://github.com/zazencodes/zazencodes-season-3/tree/main/src/software-factory-claude-code-v2)
-(GPLv3), prilagođen Java/Spring Boot backendu i konvencijama iz
-`project-template` (CLAUDE.md + skillovi po slojevima).
+A software factory for Claude Code that works through the GitHub issues of a
+Spring Boot service. Label an issue `factory` and run `/factory run`. Agents
+then decide whether the issue is worth building, write a spec, write the code
+and tests following your service's conventions, run `mvn verify`, review the
+change, and open a pull request that closes the issue. The approver merges the
+PRs it's sure about and hands the rest to you.
 
-## Kako se uklapa s project-template
+It's based on [zazencodes software-factory-claude-code-v2](https://github.com/zazencodes/zazencodes-season-3/tree/main/src/software-factory-claude-code-v2)
+(GPLv3), adapted for Java/Spring Boot backends. It's built for services
+generated from a layered `project-template`: a `CLAUDE.md` with the
+architecture rules, plus one skill per layer.
+
+## How it fits together
 
 ```
-project-template  ──/new-microservice──▶  novi servis (../invoice)
+project-template  ──/new-microservice──▶  new service (../invoice)
                                             │  git init + GitHub repo
                                             ▼
-software-factory  ──./install.sh──────▶  servis + factory
-                                            │  issue s labelom `factory`
+software-factory  ──./install.sh──────▶  service + factory
+                                            │  issue labeled `factory`
                                             ▼
                                         /factory run → PR → merge
 ```
 
-- **project-template** pravi *novi servis* (skeleton, infrastruktura, prvi modul).
-- **software-factory** gradi *feature-e u postojećem servisu*, issue po issue.
+- **project-template** creates a *new service*: the skeleton, the
+  infrastructure and the first module.
+- **software-factory** builds *features in an existing service*, one issue at
+  a time.
 
-Factory agenti ne izmišljaju arhitekturu: builder i revieweri čitaju servisov
-`CLAUDE.md` i skillove (`controller-conventions`, `service-layer-conventions`,
-`entity-and-liquibase-conventions`, `testing-conventions`, …) i tvoje postojeće
-`code-reviewer.md` / `integration-flow-auditor.md` checkliste. Kad promijeniš
-pravilo u templateu, factory ga automatski poštuje.
+The factory agents don't invent architecture. The builder and reviewers read
+the service's `CLAUDE.md` and its layer skills (`controller-conventions`,
+`service-layer-conventions`, `entity-and-liquibase-conventions`,
+`testing-conventions`, …). They also read the service's own
+`code-reviewer.md` and `integration-flow-auditor.md` checklists when those
+exist. Change a rule in the template and the factory follows it.
 
 ## Pipeline
 
 ```
-issue s labelom `factory`
+issue labeled `factory`
         │
         ▼
-intake (fable) ── NEEDS-INFO → pita autora na issue-u, čeka odgovor
-        │         REJECT     → kaže zašto, skida label
-        ▼ ACCEPT (možda suženo); ocijeni risk + surfaces (api, db, integration, security)
-route (skripta)   bira reviewere i modele iz config.json
+intake (fable) ── NEEDS-INFO → asks the author on the issue, waits for a reply
+        │         REJECT     → says why on the issue, removes the label
+        ▼ ACCEPT (maybe rescoped); rates risk + surfaces (api, db, integration, security)
+route (script)    picks reviewers and models from config.json
         ▼
-spec-writer (opus) → spec.md: endpointi, tabele, klase po slojevima, acceptance kriteriji
+spec-writer (opus) → spec.md: endpoints, tables, classes per layer, acceptance criteria
         ▼
-builder (opus) → kod + testovi, commit, push, draft PR "Closes #n"
+builder (opus) → code + tests, commit, push, draft PR "Closes #n"
         ▼            ▲
-gate (skripta) ─FAIL─┤  factory/checks.sh = mvn -o clean verify (testovi, JaCoCo, checkstyle)
+gate (script) ─FAIL──┤  factory/checks.sh = mvn -o clean verify (tests, JaCoCo, checkstyle)
         ▼ PASS       │
-revieweri ─CHANGES───┘  code uvijek; + api / db / integration / security po surface-u
-        ▼ svi PASS
-approver (opus) ── APPROVE  → sync s main, gate ponovo, gh pr merge
-                └─ ESCALATE → PR spreman za tebe, label factory:needs-human
+reviewers ─CHANGES───┘  code always; + api / db / integration / security by surface
+        ▼ all PASS
+approver (opus) ── APPROVE  → sync with main, gate again, gh pr merge
+                └─ ESCALATE → PR ready for you, issue labeled factory:needs-human
 ```
 
-| Reviewer | Kad radi | Model | Gleda |
+| Reviewer | Runs when | Model | Looks at |
 |---|---|---|---|
-| `code` | uvijek | haiku (low) / sonnet | `Check`, `final`, slojevi, jedan interfejs po operaciji, testovi, Javadoc |
-| `api` | surface `api` | sonnet | endpointi, status kodovi, `@Valid`, OpenAPI, kompatibilnost |
-| `db` | surface `db` | sonnet | Liquibase (samo aditivno), entity↔šema, indeksi, N+1, `readOnly` |
-| `integration` | surface `integration` | sonnet | `BaseClient`, `Sqa-*` headeri, `platform.md`, filteri, eventi |
-| `security` | surface `security` | opus | `@PreAuthorize`, ownership, input → SQL, curenje podataka, tajne |
+| `code` | always | haiku (low risk) / sonnet | `Check` calls, `final`, layering, one interface per operation, tests, Javadoc |
+| `api` | surface `api` | sonnet | endpoints, status codes, `@Valid`, OpenAPI, backward compatibility |
+| `db` | surface `db` | sonnet | Liquibase (additive only), entity ↔ schema, indexes, N+1, `readOnly` |
+| `integration` | surface `integration` | sonnet | `BaseClient`, `Sqa-*` headers, `platform.md`, filters, events |
+| `security` | surface `security` | opus | `@PreAuthorize`, ownership checks, input reaching SQL, data leaks, secrets |
 
-Approver **uvijek eskalira** tebi: promjene u `security/`, ne-aditivne Liquibase
-migracije, nove dependency-je u `pom.xml`, CI/Docker/deploy, promjene koje
-traže izmjenu u drugom servisu (`platform.md`), i breaking API promjene.
+The approver **always escalates** these changes to a human:
 
-## Šta ti treba (jednom)
+- changes to `security/`;
+- non-additive Liquibase migrations;
+- new dependencies in `pom.xml`;
+- CI, Docker or deploy changes;
+- changes that need another service to change (`platform.md`);
+- breaking API changes.
 
-1. **GitHub CLI** — trenutno nije instaliran na ovoj mašini:
+## Requirements
 
-   ```bash
-   sudo apt install gh
-   ```
+- [Claude Code](https://claude.com/claude-code) 2.1.257 or later (intake runs on Fable).
+- `python3` 3.10+, Java 17 and Maven.
+- [GitHub CLI](https://cli.github.com/), authenticated with push and label rights:
 
-   ```bash
-   gh auth login
-   ```
+  ```bash
+  gh auth login
+  ```
 
-2. **Claude Code** 2.1.257+ (intake radi na Fable modelu), `python3` 3.10+,
-   Java 17 i Maven (već imaš oboje).
-3. Servis mora biti **git repo s GitHub `origin`-om** i pushan `main` branch.
-   Servisi iz templatea nastaju bez gita, pa:
+- The service is a **git repo with a GitHub `origin`**, and its default branch
+  is pushed. Services generated from the template start without git:
 
-   ```bash
-   cd ~/Desktop/projects/invoice && git init -b main && git add -A && git commit -m "Initial service"
-   ```
+  ```bash
+  git init -b main && git add -A && git commit -m "Initial service"
+  ```
 
-   ```bash
-   gh repo create indirkaric/invoice --private --source . --push
-   ```
+  ```bash
+  gh repo create <owner>/<service> --private --source . --push
+  ```
 
-## Instalacija u servis
+## Install into a service
 
-Klonuj factory (jednom):
-
-```bash
-git clone https://github.com/indirkaric/software-factory.git ~/Desktop/projects/software-factory
-```
-
-Instaliraj ga u servis:
+Clone the factory once:
 
 ```bash
-~/Desktop/projects/software-factory/install.sh ~/Desktop/projects/invoice --labels --verify
+git clone https://github.com/indirkaric/software-factory.git
 ```
 
-Skripta:
-
-- kopira `kit/` u servis (`.claude/skills/factory`, 9 agenata, `factory/`);
-- postavi `base_branch` iz `origin`-a;
-- doda `/factory/jobs/`, `/.worktrees/` i `!/factory/bin/` u `.gitignore`
-  (Java `.gitignore` inače ignoriše `bin`);
-- doda sekciju "Software factory" u servisov `CLAUDE.md`;
-- `--labels` napravi labele `factory`, `factory:needs-info`, `factory:needs-human`;
-- `--verify` pusti `factory/checks.sh` — mora proći na `main`-u, inače factory
-  ne može proći nijedan job.
-
-Ne commita ništa. Ti onda:
+Install it into a service:
 
 ```bash
-cd ~/Desktop/projects/invoice && git add .claude factory .gitignore CLAUDE.md && git commit -m "Install software factory" && git push
+./software-factory/install.sh <path-to-service> --labels --verify
 ```
 
-Push je obavezan: svaki job pravi branch iz `origin/main`.
+The installer:
 
-Alternativa: otvori Claude Code u servisu i reci mu
-*"Instaliraj software factory iz ~/Desktop/projects/software-factory po INSTALL.md"*.
+- copies `kit/` into the service: `.claude/skills/factory`, nine agents and `factory/`;
+- sets `base_branch` from the service's `origin`;
+- adds `/factory/jobs/`, `/.worktrees/` and `!/factory/bin/` to `.gitignore`
+  (Java `.gitignore` files usually ignore `bin`);
+- appends a "Software factory" section to the service's `CLAUDE.md`;
+- with `--labels`, creates the `factory`, `factory:needs-info` and
+  `factory:needs-human` labels;
+- with `--verify`, runs `factory/checks.sh`. It must pass on the default
+  branch, or no job can ever pass the gate.
 
-## Korištenje
+It refuses to overwrite existing files unless you pass `--force`. It never
+commits, so commit and push the install yourself:
 
-Otvori Claude Code **u root-u servisa** (ne u factory repou).
+```bash
+git add .claude factory .gitignore CLAUDE.md && git commit -m "Install software factory" && git push
+```
 
-**1. Napiši issue** na GitHubu s labelom `factory`, npr.:
+The push is required, because every job branches from `origin/<base_branch>`.
+
+You can also let Claude do the install. Open Claude Code in the service and say:
+*"Install the software factory from `<path>/software-factory` following INSTALL.md"*.
+
+## Usage
+
+Open Claude Code **in the service's root**, not in this repo.
+
+**1. File an issue** on GitHub with the `factory` label, for example:
 
 > **Add status to invoices**
-> Invoice treba imati status DRAFT / SENT / PAID. Novi endpoint
-> `PATCH /invoice/{id}/status`. Samo DRAFT → SENT → PAID je dozvoljeno.
+> An invoice has a status: DRAFT, SENT or PAID. New endpoint
+> `PATCH /invoice/{id}/status`. Only DRAFT → SENT → PAID is allowed.
 
-Ili ga napravi iz Claude Codea: `/factory dodaj status na invoice: DRAFT, SENT, PAID…`
-— factory sam otvori issue i pokrene ga.
+Or file it from Claude Code with `/factory add a status to invoices: DRAFT,
+SENT, PAID…`. The factory opens the issue and runs it.
 
-**2. Pokreni:**
+**2. Run the factory:**
 
 ```
-/factory run          svi otvoreni `factory` issue-i, `concurrency` odjednom; nastavlja prekinute
-/factory run 12       samo issue #12
-/factory <bilo šta>   pitanja, feedback, novi feature
+/factory run          every open `factory` issue, `concurrency` at a time; also resumes
+/factory run 12       only issue #12
+/factory <anything>   questions, feedback, a new feature
 ```
 
-**3. Prati:** u terminalu dobiješ jednu liniju po koraku
-(`001-add-status #12: gate PASS → review (code, api, db)`). Dashboard:
+**3. Watch it.** The session prints one line per step, for example
+`001-add-status #12: gate PASS → review (code, api, db)`. To open the
+dashboard, run:
 
 ```bash
 cd factory && python3 -m http.server
 ```
 
-pa otvori <http://localhost:8000/dashboard.html> — kartica po jobu, gate i
-review čipovi po rundi, cijena i vrijeme; klik otvara svaki fajl koji je job
-napisao.
+Then open <http://localhost:8000/dashboard.html>. Each job is a card that
+shows its gate and review results per round, its cost and its time. Click a
+card to read every file the job wrote.
 
-**4. Odluči.** Svaki job završi kao PR:
+**4. Decide.** Every job ends as a PR:
 
-- **merged** — approver je bio siguran, PR je merge-an.
-- **factory:needs-human** — PR čeka tebe, s komentarom šta tačno treba odlučiti.
-  Odobriš ga **merge-om na GitHubu**. Ako hoćeš izmjene:
-  `/factory za #12: status PAID ne smije se vraćati nazad, dodaj test` — to ide
-  builderu kao `feedback-1.md` i krene nova runda.
-- **factory:needs-info** — intake je pitao autora na issue-u. Odgovori u
-  komentaru issue-a (ili kroz `/factory odgovor za #12: …`), pa `/factory run`.
-- Da odbaciš job: `/factory odbaci #12, radimo to drugačije`.
+- **merged**: the approver was sure, and the factory merged the PR.
+- **factory:needs-human**: the PR waits for you, with a comment that says
+  exactly what to decide. Approve it by **merging it on GitHub**. To ask for
+  changes, tell the factory, for example `/factory for #12: PAID must never go
+  back, add a test`. Your words go to the builder as `feedback-1.md`, and a new
+  round starts.
+- **factory:needs-info**: intake asked the author a question on the issue.
+  Answer it in an issue comment (or with `/factory answer for #12: …`), then
+  run `/factory run` again.
+- To drop a job: `/factory reject #12, we'll do it differently`.
 
-**Šta factory neće:** praviti nove mikroservise (to je `/new-microservice` u
-templateu), dirati druge repoe, pokretati `docker`, deployati, pushati išta osim
-`factory/*` brancheva.
+**The factory never** creates new microservices (that's the template's
+`/new-microservice`), touches other repos, runs `docker`, deploys, or pushes
+anything except `factory/*` branches.
 
-## Podešavanja — `factory/config.json`
+## Configuration: `factory/config.json`
 
-| Ključ | Default | Značenje |
+| Key | Default | Meaning |
 |---|---|---|
-| `concurrency` | 2 | koliko jobova radi paralelno (počni s 1) |
-| `max_rounds` | 3 | build→gate→review rundi prije nego pita tebe |
-| `merge_method` | squash | mora biti dozvoljen u repo postavkama |
-| `routing` | low→haiku, medium/high→sonnet | model code reviewera po riziku |
-| `surface_reviewers` | api/db/integration→sonnet, security→opus | dodatni revieweri |
-| `protected_paths` | factory fajlovi + checkstyle | gate pada ako ih branch izmijeni |
+| `concurrency` | 2 | jobs running at once (start with 1) |
+| `max_rounds` | 3 | build → gate → review rounds before it asks you |
+| `merge_method` | squash | must be allowed in the repo's settings |
+| `routing` | low → haiku, medium/high → sonnet | code reviewer model by risk |
+| `surface_reviewers` | api/db/integration → sonnet, security → opus | extra reviewers per surface |
+| `protected_paths` | factory files + checkstyle config | the gate fails a branch that modifies them |
 
-`checks.sh` radi Maven **offline** (`-o`), kao template. Ako job doda novu
-dependency koja nije u `~/.m2`, pokreni sesiju s `FACTORY_MVN_ONLINE=1`.
+`checks.sh` runs Maven **offline** (`-o`), like the template does. If a job
+adds a dependency that isn't in `~/.m2` yet, start the session with
+`FACTORY_MVN_ONLINE=1`.
 
-## Struktura repoa
+## Repository layout
 
 ```
-install.sh                       instalira kit u servis
-INSTALL.md                       upute za agenta koji instalira
-DESIGN.md                        kako radi i šta je promijenjeno u odnosu na original
-kit/                             ono što ide u servis
-  .claude/skills/factory/SKILL.md   orkestrator (/factory)
+install.sh                       installs the kit into a service
+INSTALL.md                       instructions for an installing agent
+DESIGN.md                        how it works and what changed from the original
+kit/                             what gets copied into a service
+  .claude/skills/factory/SKILL.md   the orchestrator (/factory)
   .claude/agents/
-    intake.md               fable    vrijedi li, koji scope, risk + surfaces
-    spec-writer.md          opus     spec.md po slojevima
-    builder.md              opus     kod, testovi, commit, PR, build.md
-    reviewer-code.md        routed   konvencije, ispravnost, testovi
-    reviewer-api.md         sonnet   REST ugovor
-    reviewer-db.md          sonnet   Liquibase, JPA, transakcije
-    reviewer-integration.md sonnet   drugi servisi, Sqa-* headeri
-    reviewer-security.md    opus     autorizacija, input, tajne
-    approver.md             opus     APPROVE ili ESCALATE
+    intake.md               fable    worth building? at what scope? risk + surfaces
+    spec-writer.md          opus     spec.md, layer by layer
+    builder.md              opus     code, tests, commits, PR, build.md
+    reviewer-code.md        routed   conventions, correctness, tests
+    reviewer-api.md         sonnet   REST contract
+    reviewer-db.md          sonnet   Liquibase, JPA, transactions
+    reviewer-integration.md sonnet   other services, Sqa-* headers
+    reviewer-security.md    opus     authorization, input, secrets
+    approver.md             opus     APPROVE or ESCALATE
   factory/
     config.json  checks.sh  dashboard.html
-    bin/job      jedini pisac job.json, odbija nedozvoljene prelaze, merge
-    bin/gate     checks.sh u worktreeu → round-N/checks.md
-    bin/route    risk + surfaces → revieweri
+    bin/job      the only writer of job.json; refuses illegal moves; merges
+    bin/gate     runs checks.sh in a job's worktree → round-N/checks.md
+    bin/route    risk + surfaces → the job's reviewers
 ```
 
-## Cijena i sigurnost
+## Using it with a different project template
 
-- Otvara i merge-a prave PR-ove na tvom Claude planu. Počni s `concurrency: 1`
-  i čitaj svaki PR dok mu ne vjeruješ.
-- Intake radi na Fable jednom po issue-u; zavisno od plana, Fable može ići na
-  usage kredite.
-- Cijena po jobu na dashboardu je API-ekvivalent iz transkripata; na pretplati
-  pokazuje gdje ide potrošnja, ne račun.
-- Samo issue-i s labelom `factory` se grade (label mogu dodati samo ljudi s
-  triage/write pristupom). Tekst issue-a agenti vide kao citirane podatke, ne
-  kao instrukcije.
+The agents expect a `CLAUDE.md` and layer skills under `.claude/skills/`. The
+skill names they look for are the ones listed above. If your services use
+other names or rules:
 
-## Licenca
+- edit the skill lists in `kit/.claude/agents/*.md`;
+- edit the checklists in `reviewer-*.md`;
+- edit the ESCALATE list in `approver.md`.
 
-[GPLv3](LICENSE), kao i original.
+If your build isn't `mvn verify`, change `kit/factory/checks.sh`. Keep each
+agent's file names, first-line formats and one-line replies: the scripts
+depend on them.
+
+## Cost and safety
+
+- The factory opens and merges real PRs and runs on your Claude plan. Start
+  with `concurrency: 1` and read every PR until you trust it.
+- Intake runs on Fable once per issue. Depending on your plan, Fable can bill
+  to usage credits.
+- Cost per job on the dashboard is the API-equivalent price, read from Claude
+  Code's transcripts. On a subscription it shows where the usage goes, not
+  what you're billed.
+- Only issues labeled `factory` run, and only people with triage or write
+  access can add labels. Agents get the issue text as quoted data, never as
+  instructions.
+
+## License
+
+[GPLv3](LICENSE), like the original.
