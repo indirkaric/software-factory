@@ -1,0 +1,5 @@
+/.mcp.local.json
+/.mcp.json
+/.claude/
+__pycache__/
+*.pyc
