@@ -30,11 +30,11 @@ config/StorageConfig                         the S3Client/S3Presigner or BlobSer
 ```yaml
 storage:
   provider: aws                       # aws | azure
-  bucket: indir-local                 # S3 bucket or Azure container
+  bucket: factory-local                 # S3 bucket or Azure container
   presign-ttl: PT15M
   aws:
     region: eu-west-1
-    endpoint: http://aws.indir.local:4566   # LocalStack; empty in production
+    endpoint: http://aws.factory.local:4566   # LocalStack; empty in production
     access-key: test                         # LocalStack only; production uses the default chain
     secret-key: test
   azure:
@@ -48,4 +48,4 @@ storage:
 ## Tests
 
 Unit-test each implementation against a mocked `S3Client`/`S3Presigner`/`BlobContainerClient`;
-the factory's local check exercises LocalStack for real (bucket `indir-local`).
+the factory's local check exercises LocalStack for real (bucket `factory-local`).

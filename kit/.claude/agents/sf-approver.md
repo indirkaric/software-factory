@@ -54,14 +54,16 @@ ESCALATE if any of them fails, or if the change:
 
 - touches identity or access: `security/`, `SecurityConfiguration`, the identity
   filters, the client-id allowlist, `IScopeContext`, or an authority on an
-  existing endpoint;
+  existing endpoint (a new permission on a new endpoint, listed in
+  `permissions.txt` with the groups the spec names, is fine);
+- removes a line from `permissions.txt` or gives an existing permission to more groups;
 - changes the data of existing rows, or alters, renames or drops an existing
   column or table in a Liquibase changeset (a new table, or a new nullable or
   defaulted column, is fine);
 - adds a dependency the issue or spec doesn't call for, upgrades one, adds a
   dependency that isn't managed by the Spring Boot BOM and isn't a well-known
   library, adds or changes a plugin, or changes the JaCoCo or checkstyle setup;
-- changes `Dockerfile`, `.github/workflows/*.yml`, CI, deploy or `application*.yaml`
+- changes `Dockerfile`, `docker-compose*.yml`, `.github/workflows/*.yml`, CI, deploy or `application*.yaml`
   beyond adding keys the feature needs;
 - needs a change in another service: a new row or caller policy in
   `platform.md`, or a downstream endpoint that has to allowlist this service;

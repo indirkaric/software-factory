@@ -1,0 +1,26 @@
+# {{service-name}} in a container, next to the development repo's infrastructure (network
+# `factory`, started with `dev-up` there). Build the jar first: mvn -B -DskipTests package.
+#   docker compose up -d --build
+# The override file publishes the port on the host. In the development repo the same service
+# is in docker-compose.services.yml (dev-run {{service-name}}).
+name: {{service-name}}
+
+services:
+  {{service-name}}:
+    image: ${IMAGE:-factory/{{service-name}}:local}
+    build: .
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-default}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:{{port}}/actuator/health || exit 1"]
+      interval: 15s
+      retries: 20
+    networks:
+      factory:
+        aliases: [{{service-name}}.factory.local]
+
+networks:
+  factory:
+    external: true
+    name: factory

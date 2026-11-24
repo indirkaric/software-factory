@@ -9,8 +9,12 @@ The permission model, distilled from the `identity` service with its gaps fixed.
 
 - A permission is an UPPER-KEBAB `VERB-NOUN` code: `READ-INVOICE`, `EDIT-INVOICE`,
   `ADD-GROUP`, `READ-MY-PAT`. Spring sees it as `SCOPE_<CODE>`.
-- Keycloak grants it either as a scope or as a realm role; `KeycloakRolesConverter` maps both
-  to `SCOPE_<CODE>`. In the development realm `indir`: roles `ADMIN`, `MANAGER`, `USER`.
+- Keycloak grants it as a realm role plus a client scope of the same name (only holders get
+  the scope); `KeycloakRolesConverter` maps both to `SCOPE_<CODE>`. Users get permissions
+  through groups: `Administrator` (all), `Manager`, `Employee`.
+- **Every permission the code checks is a line in `permissions.txt`** (`READ-INVOICE
+  Manager,Employee`); `PermissionsDeclaredTest` fails otherwise. The software factory adds the
+  file to the development repo's realm (`scripts/realm.py sync`); never edit the realm here.
 - Endpoints use constants, never inline strings:
   `public static final String READ_INVOICE = "hasAuthority('SCOPE_READ-INVOICE')";` in
   `Constants.Authority`, then `@PreAuthorize(Constants.Authority.READ_INVOICE)`.

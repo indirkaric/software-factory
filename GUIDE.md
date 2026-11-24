@@ -66,9 +66,10 @@ dev-hosts
 dev-up
 ```
 
-`dev-hosts` maps `*.indir.local` to 127.0.0.1 (sudo). `dev-up` starts Postgres (:5432),
+`dev-hosts` maps `*.factory.local` to 127.0.0.1 (sudo). `dev-up` starts Postgres (:5432),
 Keycloak (:8080, admin/admin) and LocalStack (:4566). `dev-help` lists every command. Stop any
-other stack that uses the same ports first.
+other stack that uses the same ports first, or move this one with `DB_PORT`, `AUTH_PORT`,
+`AWS_PORT` in `development/.env`.
 
 ## Phase C — a new service
 
@@ -95,7 +96,10 @@ factory's registry. Run it locally with `dev-run invoice`, or `mvn spring-boot:r
      `/software-factory for #3: PAID never goes back, add a test` for another round.
    - Reject: `/software-factory reject #3, we'll do it differently`.
 5. In parallel: open another Claude Code session in the same service and run another issue.
-   Each job has its own worktree (`.worktrees/<job>`) and branch (`factory/<job>`).
+   Each job has its own worktree (`.worktrees/<job>`), branch (`factory/<job>`), and during
+   the local check its own port and database; `factory/bin/verify ps` lists them.
+   A new permission (`READ-USER`) goes in the service's `permissions.txt`; the factory adds it
+   to `development`'s realm and commits it there after the merge (`dev-perm` lists them).
 6. Dashboard: `cd factory && python3 -m http.server` → http://localhost:8000/dashboard.html.
 
 ## An existing project

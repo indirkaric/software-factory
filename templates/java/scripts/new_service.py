@@ -62,8 +62,8 @@ def parse_args():
         sys.exit(f"--name must be kebab-case: {args.name}")
     if not re.match(r"^[A-Z][A-Za-z0-9]*$", args.domain):
         sys.exit(f"--domain must be PascalCase: {args.domain}")
-    if not re.match(r"^0(\.\d+)?$|^1(\.0+)?$", args.coverage):
-        sys.exit(f"--coverage must be between 0 and 1: {args.coverage}")
+    if not re.match(r"^0(\.\d+)?$|^1(\.0+)?$", args.coverage) or float(args.coverage) < 0.80:
+        sys.exit(f"--coverage must be between 0.80 and 1: {args.coverage}")
     snake = args.name.replace("-", "_")
     args.root_package = args.root_package or f"com.indir.{snake}"
     if not re.match(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$", args.root_package):
@@ -124,8 +124,8 @@ def wire_calls(args, values, rows):
 
 
 def register(args, values):
-    base = f"http://{args.name}.indir.local:{args.port}/{args.api_prefix}/"
-    row = f"| {args.name} | {args.name}.indir.local | {args.port} | {base} | nothing | {args.role} |"
+    base = f"http://{args.name}.factory.local:{args.port}/{args.api_prefix}/"
+    row = f"| {args.name} | {args.name}.factory.local | {args.port} | {base} | nothing | {args.role} |"
     text = REGISTRY.read_text(encoding="utf-8")
     last = [line for line in text.splitlines() if line.startswith("|") and line.rstrip().endswith("|")][-1]
     REGISTRY.write_text(text.replace(last, last + "\n" + row, 1), encoding="utf-8")
@@ -146,7 +146,7 @@ only the authorities the called endpoints need in `ServiceCommunicationIdFilter`
 """)
     out.append(f"""## A proxy that will call `{args.name}`
 
-`client.{args.name}.base-uri: "http://{args.name}.indir.local:{args.port}/{args.api_prefix}/"` and a
+`client.{args.name}.base-uri: "http://{args.name}.factory.local:{args.port}/{args.api_prefix}/"` and a
 client id `<Caller>.{svc}`; add it to `{args.name}`'s `Constants.TRUSTED_CLIENTS`.
 """)
     (args.target / "PLATFORM_CHANGES.md").write_text("\n".join(out), encoding="utf-8")
@@ -183,15 +183,15 @@ def service_facts(args, values):
 |---|---|
 | Port | `{args.port}` |
 | API prefix | `/{args.api_prefix}/v1` |
-| Host alias | `{args.name}.indir.local` |
+| Host alias | `{args.name}.factory.local` |
 | Root package | `{args.root_package}` |
 | Role | `{args.role}` |
 | Database / schema | {"`" + args.db + "` (role `" + args.db + "_app`)" if args.role == "persistence" else "none (proxy)"} |
-| Inbound filters | service-communication-id → correlation-id → user-id → Keycloak JWT (realm `indir`) |
+| Inbound filters | service-communication-id → correlation-id → user-id → Keycloak JWT (realm `factory`) |
 | Inbound callers | `{values["{{ServiceName}}"]}` accepts `Constants.TRUSTED_CLIENTS` only (`UI.{values["{{ServiceName}}"]}`) |
 | Outbound clients | {', '.join('`' + c + '`' for c in args.calls) or 'none'} — base URIs in `application.yaml`, ids in `Constants`; each wrapper extends `client/BaseClient` |
-| Coverage gate | `{args.coverage}` instruction coverage |
-
+| Coverage gate | `{args.coverage}` instruction and line coverage (never below 0.80) |
+| Permissions | `permissions.txt` (the factory adds them to the development realm) |
 | CI | `.github/workflows/ci.yml`: `mvn verify` on every push and PR{" + Liquibase update/rollback test" if args.role == "persistence" else ""} |
 | Local run | `development` repo: `dev-up`, then `mvn spring-boot:run` (see README.md) |
 

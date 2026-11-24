@@ -2,7 +2,7 @@
 # Optional: Azurite (profile azure), Redis (profile redis). Services live in
 # docker-compose.services.yml (scripts/add-service.sh adds them). `.env` sets
 # COMPOSE_FILE, so a plain `docker compose` in this folder uses all three files.
-name: indir
+name: factory
 
 services:
   db:
@@ -19,8 +19,8 @@ services:
       timeout: 5s
       retries: 20
     networks:
-      indir:
-        aliases: [database.indir.local]
+      factory:
+        aliases: [database.factory.local]
 
   auth:
     image: quay.io/keycloak/keycloak:24.0.5
@@ -30,28 +30,28 @@ services:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://database.indir.local:5432/keycloak
+      KC_DB_URL: jdbc:postgresql://database.factory.local:5432/keycloak
       KC_DB_USERNAME: postgres
       KC_DB_PASSWORD: postgres
-      # Tokens always carry iss=http://auth.indir.local:8080/realms/indir, whether they
+      # Tokens always carry iss=http://auth.factory.local:8080/realms/factory, whether they
       # are fetched from the host (localhost:8080) or from a container.
-      KC_HOSTNAME_URL: http://auth.indir.local:8080
+      KC_HOSTNAME_URL: http://auth.factory.local:8080
       KC_HOSTNAME_STRICT: "false"
       KC_HTTP_ENABLED: "true"
     volumes:
-      - ./docker-mounts/keycloak/indir-realm.json:/opt/keycloak/data/import/indir-realm.json:ro
+      - ./docker-mounts/keycloak/factory-realm.json:/opt/keycloak/data/import/factory-realm.json:ro
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /realms/indir HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /realms/factory HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
       interval: 5s
       timeout: 5s
       retries: 60
       start_period: 20s
     networks:
-      indir:
-        aliases: [auth.indir.local]
+      factory:
+        aliases: [auth.factory.local]
 
   aws:
     image: localstack/localstack:3.8
@@ -67,8 +67,8 @@ services:
       timeout: 5s
       retries: 40
     networks:
-      indir:
-        aliases: [aws.indir.local, s3.aws.indir.local]
+      factory:
+        aliases: [aws.factory.local, s3.aws.factory.local]
 
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite:3.33.0
@@ -76,8 +76,8 @@ services:
     restart: unless-stopped
     command: azurite --loose --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0
     networks:
-      indir:
-        aliases: [azure.indir.local]
+      factory:
+        aliases: [azure.factory.local]
 
   redis:
     image: redis:7-alpine
@@ -91,13 +91,13 @@ services:
       interval: 5s
       retries: 20
     networks:
-      indir:
-        aliases: [redis.indir.local]
+      factory:
+        aliases: [redis.factory.local]
 
 volumes:
   pg-data:
   redis-data:
 
 networks:
-  indir:
-    name: indir
+  factory:
+    name: factory

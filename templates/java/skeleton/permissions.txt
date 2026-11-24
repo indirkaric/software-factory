@@ -1,0 +1,7 @@
+# Keycloak permissions this service checks (Constants.ApiScopes, used as SCOPE_<NAME>).
+# One line each: NAME  groups that get it (Administrator always gets every permission).
+# The software factory adds every line to the development realm (realm role + client scope
+# + group), so a new permission works locally the moment it is listed here.
+# PermissionsDeclaredTest fails when a scope in Constants.ApiScopes is missing here.
+ADMIN
+MANAGER   Manager

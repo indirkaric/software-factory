@@ -76,9 +76,10 @@ dev-hosts
 dev-up
 ```
 
-`dev-hosts` mapira `*.indir.local` na 127.0.0.1 (traži sudo). `dev-up` diže Postgres (:5432),
+`dev-hosts` mapira `*.factory.local` na 127.0.0.1 (traži sudo). `dev-up` diže Postgres (:5432),
 Keycloak (:8080, admin/admin) i LocalStack (:4566). `dev-help` ispiše sve komande. Ako ti radi
-stari stack na istim portovima, prvo ga zaustavi.
+stari stack na istim portovima, prvo ga zaustavi ili u `development/.env` promijeni
+`DB_PORT`, `AUTH_PORT`, `AWS_PORT`.
 
 ## Faza C — novi servis
 
@@ -130,6 +131,15 @@ Merge ide tek kad je i GitHub Actions zelen.
 
 Otvori drugu Claude Code sesiju u istom servisu i pokreni drugi tiket. Svaki job ima svoj
 worktree (`.worktrees/<job>`) i granu (`factory/<job>`); sesija zauzme job, druga ga preskoči.
+Lokalna provjera svakom jobu da svoj port (51000+) i svoju bazu, a poslije sve ugasi
+(`factory/bin/verify ps` pokaže šta radi, `verify gc` počisti).
+
+### D5b. Nova permisija
+
+Kažeš npr. "na user servisu treba permisija READ-USER za ...". Builder je doda u
+`Constants.ApiScopes` i u `permissions.txt` (`READ-USER  Manager,Employee`); factory je ubaci u
+realm development repoa (i u Keycloak koji radi), a nakon merge-a commita i pusha development.
+Ručno: `dev-perm`, `dev-perm add READ-X --groups Manager`.
 
 ### D6. Dashboard
 

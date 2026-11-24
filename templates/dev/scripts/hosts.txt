@@ -1,6 +1,6 @@
-database.indir.local
-auth.indir.local
-aws.indir.local
-s3.aws.indir.local
-azure.indir.local
-redis.indir.local
+database.factory.local
+auth.factory.local
+aws.factory.local
+s3.aws.factory.local
+azure.factory.local
+redis.factory.local

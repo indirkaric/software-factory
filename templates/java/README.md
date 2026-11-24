@@ -6,7 +6,7 @@ infrastructure from. Spring Boot 3.2, Java 17, Maven, package `com.indir.<name>`
 
 | Path | What | In a new service |
 |---|---|---|
-| `skeleton/` | infrastructure code + tests, `pom.xml`, `Dockerfile`, `.github/workflows/ci.yml` | yes, filled |
+| `skeleton/` | infrastructure code + tests, `pom.xml`, `Dockerfile`, `docker-compose*.yml`, `permissions.txt`, `.github/workflows/ci.yml` | yes, filled |
 | `CLAUDE.md` | architecture rules, always loaded by Claude Code | yes, + service facts |
 | `.claude/skills/*` | one skill per layer, module checklists, storage, permissions | yes |
 | `.claude/skills/inter-service-propagation/platform.md` | registry: every service's host, port, base URI | yes (snapshot) |
@@ -26,7 +26,7 @@ markers is removed for a proxy.
 | `correlation-id` | `CorrelationIdFilter` | read or generated per request, forwarded on every outbound call |
 | `user-id` | `UserIdFilter` | base64 JSON `{"userId"}` of the user a service acts for |
 
-Users authenticate with a Keycloak JWT (realm `indir`); scopes and realm roles both become
+Users authenticate with a Keycloak JWT (realm `factory`); scopes and realm roles both become
 `SCOPE_<NAME>` authorities (`KeycloakRolesConverter`).
 
 ## Changing the skeleton

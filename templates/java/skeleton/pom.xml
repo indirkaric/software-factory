@@ -225,6 +225,11 @@
                                             <value>COVEREDRATIO</value>
                                             <minimum>{{coverage}}</minimum>
                                         </limit>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>{{coverage}}</minimum>
+                                        </limit>
                                     </limits>
                                 </rule>
                             </rules>

@@ -1,0 +1,836 @@
+{
+  "realm": "factory",
+  "displayName": "Factory (local)",
+  "enabled": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 21600,
+  "ssoSessionIdleTimeout": 86400,
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "bruteForceProtected": false,
+  "roles": {
+    "realm": [
+      {
+        "name": "ADMIN",
+        "description": "Everything; trusted service-to-service callers get it too"
+      },
+      {
+        "name": "MANAGER",
+        "description": "Manage the domain data"
+      },
+      {
+        "name": "READ-USER",
+        "description": "Read users"
+      },
+      {
+        "name": "EDIT-USER",
+        "description": "Create and change users"
+      },
+      {
+        "name": "READ-GROUP",
+        "description": "Read permission groups"
+      },
+      {
+        "name": "EDIT-GROUP",
+        "description": "Create and change permission groups"
+      },
+      {
+        "name": "READ-PERMISSION",
+        "description": "Read the permission catalogue"
+      },
+      {
+        "name": "READ-MY-PAT",
+        "description": "Read own personal access tokens"
+      },
+      {
+        "name": "EDIT-MY-PAT",
+        "description": "Create and revoke own personal access tokens"
+      },
+      {
+        "name": "READ-PAT",
+        "description": "Read everyone's personal access tokens"
+      },
+      {
+        "name": "READ-FILE",
+        "description": "Download stored files"
+      },
+      {
+        "name": "EDIT-FILE",
+        "description": "Upload and delete stored files"
+      }
+    ]
+  },
+  "groups": [
+    {
+      "name": "Administrator",
+      "path": "/Administrator",
+      "realmRoles": [
+        "ADMIN",
+        "MANAGER",
+        "READ-USER",
+        "EDIT-USER",
+        "READ-GROUP",
+        "EDIT-GROUP",
+        "READ-PERMISSION",
+        "READ-MY-PAT",
+        "EDIT-MY-PAT",
+        "READ-PAT",
+        "READ-FILE",
+        "EDIT-FILE"
+      ],
+      "subGroups": []
+    },
+    {
+      "name": "Manager",
+      "path": "/Manager",
+      "realmRoles": [
+        "MANAGER",
+        "READ-USER",
+        "EDIT-USER",
+        "READ-GROUP",
+        "READ-PERMISSION",
+        "READ-MY-PAT",
+        "EDIT-MY-PAT",
+        "READ-FILE",
+        "EDIT-FILE"
+      ],
+      "subGroups": []
+    },
+    {
+      "name": "Employee",
+      "path": "/Employee",
+      "realmRoles": [
+        "READ-USER",
+        "READ-PERMISSION",
+        "READ-MY-PAT",
+        "EDIT-MY-PAT",
+        "READ-FILE"
+      ],
+      "subGroups": []
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "email",
+      "description": "OpenID Connect built-in scope: email",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true",
+        "consent.screen.text": "${emailScopeConsentText}"
+      },
+      "protocolMappers": [
+        {
+          "name": "email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "email",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "email",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "email verified",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "emailVerified",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "email_verified",
+            "jsonType.label": "boolean"
+          }
+        }
+      ]
+    },
+    {
+      "name": "profile",
+      "description": "OpenID Connect built-in scope: profile",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true",
+        "consent.screen.text": "${profileScopeConsentText}"
+      },
+      "protocolMappers": [
+        {
+          "name": "nickname",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "nickname",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "nickname",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "zoneinfo",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "zoneinfo",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "zoneinfo",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "locale",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "locale",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "locale",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "website",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "website",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "website",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "family name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "lastName",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "family_name",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "picture",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "picture",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "picture",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "gender",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "gender",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "gender",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "full name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-full-name-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "birthdate",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "birthdate",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "birthdate",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "username",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "username",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "preferred_username",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "given name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "firstName",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "given_name",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "profile",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "profile",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "profile",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "middle name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "middleName",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "middle_name",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "updated at",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "updatedAt",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "updated_at",
+            "jsonType.label": "long"
+          }
+        }
+      ]
+    },
+    {
+      "name": "offline_access",
+      "description": "OpenID Connect built-in scope: offline_access",
+      "protocol": "openid-connect",
+      "attributes": {
+        "consent.screen.text": "${offlineAccessScopeConsentText}",
+        "display.on.consent.screen": "true"
+      }
+    },
+    {
+      "name": "roles",
+      "description": "OpenID Connect scope for add user roles to the access token",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "true",
+        "consent.screen.text": "${rolesScopeConsentText}"
+      },
+      "protocolMappers": [
+        {
+          "name": "client roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "foo",
+            "access.token.claim": "true",
+            "claim.name": "resource_access.${client_id}.roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        },
+        {
+          "name": "audience resolve",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-resolve-mapper",
+          "consentRequired": false,
+          "config": {}
+        },
+        {
+          "name": "realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    },
+    {
+      "name": "web-origins",
+      "description": "OpenID Connect scope for add allowed web origins to the access token",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false",
+        "consent.screen.text": ""
+      },
+      "protocolMappers": [
+        {
+          "name": "allowed web origins",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-allowed-origins-mapper",
+          "consentRequired": false,
+          "config": {}
+        }
+      ]
+    },
+    {
+      "name": "acr",
+      "description": "OpenID Connect scope for add acr (authentication context class reference) to the token",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "acr loa level",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-acr-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ADMIN",
+      "description": "Everything; trusted service-to-service callers get it too",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "MANAGER",
+      "description": "Manage the domain data",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "READ-USER",
+      "description": "Read users",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "EDIT-USER",
+      "description": "Create and change users",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "READ-GROUP",
+      "description": "Read permission groups",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "EDIT-GROUP",
+      "description": "Create and change permission groups",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "READ-PERMISSION",
+      "description": "Read the permission catalogue",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "READ-MY-PAT",
+      "description": "Read own personal access tokens",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "EDIT-MY-PAT",
+      "description": "Create and revoke own personal access tokens",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "READ-PAT",
+      "description": "Read everyone's personal access tokens",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "READ-FILE",
+      "description": "Download stored files",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "EDIT-FILE",
+      "description": "Upload and delete stored files",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    }
+  ],
+  "defaultDefaultClientScopes": [
+    "profile",
+    "email",
+    "roles",
+    "web-origins",
+    "acr"
+  ],
+  "defaultOptionalClientScopes": [
+    "offline_access"
+  ],
+  "scopeMappings": [
+    {
+      "clientScope": "ADMIN",
+      "roles": [
+        "ADMIN"
+      ]
+    },
+    {
+      "clientScope": "MANAGER",
+      "roles": [
+        "MANAGER"
+      ]
+    },
+    {
+      "clientScope": "READ-USER",
+      "roles": [
+        "READ-USER"
+      ]
+    },
+    {
+      "clientScope": "EDIT-USER",
+      "roles": [
+        "EDIT-USER"
+      ]
+    },
+    {
+      "clientScope": "READ-GROUP",
+      "roles": [
+        "READ-GROUP"
+      ]
+    },
+    {
+      "clientScope": "EDIT-GROUP",
+      "roles": [
+        "EDIT-GROUP"
+      ]
+    },
+    {
+      "clientScope": "READ-PERMISSION",
+      "roles": [
+        "READ-PERMISSION"
+      ]
+    },
+    {
+      "clientScope": "READ-MY-PAT",
+      "roles": [
+        "READ-MY-PAT"
+      ]
+    },
+    {
+      "clientScope": "EDIT-MY-PAT",
+      "roles": [
+        "EDIT-MY-PAT"
+      ]
+    },
+    {
+      "clientScope": "READ-PAT",
+      "roles": [
+        "READ-PAT"
+      ]
+    },
+    {
+      "clientScope": "READ-FILE",
+      "roles": [
+        "READ-FILE"
+      ]
+    },
+    {
+      "clientScope": "EDIT-FILE",
+      "roles": [
+        "EDIT-FILE"
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "factory-app",
+      "name": "Local apps, scripts and the factory",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "http://localhost:*",
+        "http://*.factory.local:*"
+      ],
+      "webOrigins": [
+        "*"
+      ],
+      "fullScopeAllowed": true,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "user_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "user_id",
+            "claim.name": "user_id",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "permission_groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "permission_groups",
+            "claim.name": "permission_groups",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ],
+      "defaultClientScopes": [
+        "profile",
+        "email",
+        "roles",
+        "web-origins",
+        "acr",
+        "ADMIN",
+        "MANAGER",
+        "READ-USER",
+        "EDIT-USER",
+        "READ-GROUP",
+        "EDIT-GROUP",
+        "READ-PERMISSION",
+        "READ-MY-PAT",
+        "EDIT-MY-PAT",
+        "READ-PAT",
+        "READ-FILE",
+        "EDIT-FILE"
+      ],
+      "optionalClientScopes": [
+        "offline_access"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@factory.local",
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "Local",
+      "attributes": {
+        "user_id": [
+          "LOCALADM"
+        ],
+        "permission_groups": [
+          "Administrator"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/Administrator"
+      ]
+    },
+    {
+      "username": "manager",
+      "enabled": true,
+      "email": "manager@factory.local",
+      "emailVerified": true,
+      "firstName": "Manager",
+      "lastName": "Local",
+      "attributes": {
+        "user_id": [
+          "LOCALMGR"
+        ],
+        "permission_groups": [
+          "Manager"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "manager",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/Manager"
+      ]
+    },
+    {
+      "username": "user",
+      "enabled": true,
+      "email": "user@factory.local",
+      "emailVerified": true,
+      "firstName": "User",
+      "lastName": "Local",
+      "attributes": {
+        "user_id": [
+          "LOCALUSR"
+        ],
+        "permission_groups": [
+          "Employee"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "user",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/Employee"
+      ]
+    },
+    {
+      "username": "basic",
+      "enabled": true,
+      "email": "basic@factory.local",
+      "emailVerified": true,
+      "firstName": "Basic",
+      "lastName": "Local",
+      "attributes": {
+        "user_id": [
+          "LOCALBAS"
+        ],
+        "permission_groups": [
+          ""
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "basic",
+          "temporary": false
+        }
+      ],
+      "groups": []
+    }
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"unmanagedAttributePolicy\": \"ENABLED\", \"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"validations\": {\"length\": {\"min\": 3, \"max\": 255}, \"username-prohibited-characters\": {}, \"up-username-not-idn-homograph\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"email\", \"displayName\": \"${email}\", \"validations\": {\"email\": {}, \"length\": {\"max\": 255}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}], \"groups\": [{\"name\": \"user-metadata\", \"displayHeader\": \"User metadata\", \"displayDescription\": \"Attributes, which refer to user metadata\"}]}"
+          ]
+        }
+      }
+    ]
+  }
+}

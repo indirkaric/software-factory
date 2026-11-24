@@ -14,7 +14,7 @@ spring:
     oauth2:
       resource-server:
         jwt:
-          issuer-uri: http://auth.indir.local:8080/realms/indir
+          issuer-uri: http://auth.factory.local:8080/realms/factory
 # @persistence:start
   liquibase:
     enabled: true
@@ -25,12 +25,12 @@ spring:
 database:
   name: {{db}}
   readwrite:
-    url: jdbc:postgresql://database.indir.local:5432/{{db}}
+    url: jdbc:postgresql://database.factory.local:5432/{{db}}
     username: {{db}}_app
     password: {{db}}_app
     driver-class-name: org.postgresql.Driver
   readonly:
-    url: jdbc:postgresql://database.indir.local:5432/{{db}}
+    url: jdbc:postgresql://database.factory.local:5432/{{db}}
     username: {{db}}_app
     password: {{db}}_app
     driver-class-name: org.postgresql.Driver
@@ -38,5 +38,5 @@ database:
 
 # One entry per downstream service, added by the bootstrapper:
 #   <name>:
-#     base-uri: "http://<name>.indir.local:<port>/<prefix>/"
+#     base-uri: "http://<name>.factory.local:<port>/<prefix>/"
 client: {}

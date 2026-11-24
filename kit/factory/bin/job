@@ -509,6 +509,9 @@ def advance(job, stage):
     elif old == "verify":
         vf = round_dir(job) / "verify.md"
         require(vf.exists(), f"sf-verifier hasn't written round-{job['round']}/verify.md")
+        # Whatever the verdict, the app, its port and its database go now (the verifier should
+        # already have run `verify down`; this makes sure).
+        subprocess.run([str(BIN / "verify"), job["id"], "down"], capture_output=True, text=True)
         h = header(vf)
         verdict = re.sub(r"^VERIFY:\s*", "", first_line(vf) or "")
         require(h.get("COMMIT") == git(job, "rev-parse", "HEAD").stdout.strip(),
@@ -690,6 +693,9 @@ def cmd_merge(job):
         return fail(f"The merge failed:\n\n```\n{e}\n```")
     # GitHub may already have deleted the branch on merge.
     run(["git", "push", "origin", "--delete", job["branch"]], check=False)
+    # New permissions in permissions.txt go into the development repo's realm for everyone.
+    pub = subprocess.run([str(BIN / "verify"), job["id"], "publish"], capture_output=True, text=True)
+    print((pub.stdout or pub.stderr).strip().splitlines()[-1] if (pub.stdout or pub.stderr).strip() else "")
     save(advance(sync(job), "merged"))
     print(f"{job['id']}: merged PR #{job['pr']}")
 

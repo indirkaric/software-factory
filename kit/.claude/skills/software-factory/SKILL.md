@@ -6,12 +6,10 @@ argument-hint: "run | run <n> [<n>...] | issues | new <name> java [proxy] | new 
 
 # Software factory
 
-You are the factory's orchestrator for this session. You spawn every agent,
-advance jobs only through the scripts, and never write code, specs, reviews or
-decisions yourself, never edit a `job.json`. When a script refuses, its
-message says why: fix the cause or stop and tell the user; never work around
-it. Talk to the user in Bosnian; everything on GitHub and in job files is
-English.
+You are this session's orchestrator: you spawn every agent, advance jobs only
+through the scripts, never write code, specs, reviews or decisions, never edit a
+`job.json`. A refusing script says why: fix the cause or stop and tell the user;
+never work around it. Bosnian to the user; GitHub and job files in English.
 
 ## First: attach
 
@@ -110,7 +108,8 @@ told it is resuming. Report one line per transition, e.g.
   advance <id> build` (or `needs-human` on the last round), resume the
   builder: `The local check failed: read round-<N-1>/verify.md, fix it, push,
   update build.md.`; `SKIP` (docker or the development repo missing) → `job
-  advance <id> needs-human` and tell the user what to start.
+  advance <id> needs-human` and tell the user what to start. Parallel jobs each
+  get their own port and database (`verify ps`); never change ports in code.
 - **approve**: `APPROVE` → `job merge <id>` in the background (it waits for
   GitHub Actions, up to `ci_wait_minutes`). `ESCALATE` → `job advance <id>
   needs-human`.
@@ -129,8 +128,9 @@ moves the job to `merged`.
    `resume` and `new` line (`new` → `job create <n>`, then intake); `hold` waits
    for a slot; `busy` belongs to another session; `wait` and `skip` need nothing.
 2. Each time a job finishes, run the queue again and start what it allows.
-3. When nothing runs, print `job summary` for the jobs this run touched and
-   list what waits on the user: PRs to decide (`needs-human`), questions
+3. When nothing runs, `factory/bin/verify gc` (stops apps, ports and databases of
+   finished jobs; the infra too if the factory started it), print `job summary`
+   for the jobs this run touched and list what waits on the user: PRs to decide (`needs-human`), questions
    (`needs-info`).
 
 **Resuming** (state is in files): `intake`, `spec`, `approve` respawn their

@@ -2,19 +2,24 @@
 """Run a job's branch locally against the development stack, for sf-verifier.
 
 Usage:
-  verify <job> up [--arg key=value ...]   start the infra, a fresh database, build and boot the app
-  verify <job> token [admin|manager|user] print an access token from the local Keycloak
-  verify <job> down                       stop the app and drop its database
+  verify <job> up [--arg key=value ...]   infra, the service's permissions, a fresh database, boot the app
+  verify <job> token [admin|manager|user|basic]   an access token from the local Keycloak
+  verify <job> down                       stop the app, drop its database (and the infra, see below)
+  verify <job> publish                    after the merge: commit + push new permissions to the dev repo
+  verify gc                               clean up apps of finished, dead or stale jobs (any session)
+  verify ps                               what the factory runs right now, on which ports
 
-`up` uses the development repo's docker compose (PROJECTS_DIR/DEV_REPO from
-~/.config/software-factory/config.env, or config.json verify.dev_dir): it
-starts only the infrastructure (db, auth, aws; never stops or wipes anything),
-creates an empty database `sfv_<job>` so Liquibase runs from zero, builds the
-worktree's jar and runs it on a free port with the datasource and issuer
-pointed at localhost. It prints `BASE_URL`, `LOG` and `HEALTH` lines.
-Exit 3 means the environment is missing (docker, the development repo).
+Parallel sessions: every running app holds a lease in ~/.cache/software-factory/run (pid,
+port, database), taken under one lock. Ports come from `verify.ports` (51000-51999) and
+are passed as `--server.port`, never written into code; a port in use or leased is skipped.
+All jobs share one infrastructure (Postgres, Keycloak, LocalStack of the development repo,
+ports from its .env); each job gets its own database `sfv_<service>_<job>`. The factory never
+kills a process it didn't start: a foreign process on an infra port is reported (exit 3).
+If the factory started the infra itself, the last `down` stops it again; infra the user
+started (dev-up) stays up. Exit 3 means the environment is missing (docker, the dev repo).
 """
 
+import fcntl
 import json
 import os
 import re
@@ -25,21 +30,35 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+from contextlib import contextmanager
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 FACTORY = REPO / "factory"
 CONFIG = json.loads((FACTORY / "config.json").read_text())
 VCFG = CONFIG.get("verify", {})
-KEYCLOAK = VCFG.get("keycloak", "http://localhost:8080/realms/indir")
-CLIENT = VCFG.get("client_id", "indir-app")
-USERS = {"admin": "admin", "manager": "manager", "user": "user"}
-PG = VCFG.get("postgres", {"user": "postgres", "password": "postgres", "port": 5432})
+CLIENT = VCFG.get("client_id", "factory-app")
+REALM = VCFG.get("realm", "factory")
+USERS = ("admin", "manager", "user", "basic")
+PG = VCFG.get("postgres", {"user": "postgres", "password": "postgres"})
+PORTS = VCFG.get("ports", [51000, 51999])
+MAX_MINUTES = VCFG.get("max_minutes", 45)
+INFRA = VCFG.get("infra", ["db", "auth", "aws"])
+RUN = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "software-factory" / "run"
+SERVICE = re.sub(r"[^a-z0-9]", "_", REPO.name.lower())
 
 
 def die(msg, code=1):
     print(f"verify: {msg}", file=sys.stderr)
     sys.exit(code)
+
+
+@contextmanager
+def locked():
+    RUN.mkdir(parents=True, exist_ok=True)
+    with open(RUN / ".lock", "w") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        yield
 
 
 def job(job_id):
@@ -60,7 +79,22 @@ def dev_dir():
             if "=" in line and not line.startswith("#"):
                 k, v = line.split("=", 1)
                 env[k] = v
-    return Path(env.get("PROJECTS_DIR", Path.home() / "Desktop/projects")) / env.get("DEV_REPO", "development")
+    # Projects always live side by side: <projects>/<service> and <projects>/<development>.
+    projects = Path(env["PROJECTS_DIR"]).expanduser() if env.get("PROJECTS_DIR") else REPO.parent
+    return projects / env.get("DEV_REPO", "development")
+
+
+def dev_env(key, default):
+    path = dev_dir() / ".env"
+    if path.exists():
+        for line in path.read_text().splitlines():
+            if line.startswith(f"{key}="):
+                return line.split("=", 1)[1].strip()
+    return default
+
+
+def keycloak():
+    return f"http://localhost:{dev_env('AUTH_PORT', '8080')}/realms/{REALM}"
 
 
 def compose(*args, check=True):
@@ -74,17 +108,146 @@ def compose(*args, check=True):
 
 
 def db_name(job_id):
-    return "sfv_" + re.sub(r"[^a-z0-9]", "_", job_id.lower())
+    return f"sfv_{SERVICE}_" + re.sub(r"[^a-z0-9]", "_", job_id.lower())
 
 
-def psql(sql):
-    return compose("exec", "-T", "db", "psql", "-U", PG["user"], "-v", "ON_ERROR_STOP=1", "-c", sql)
+def psql(sql, check=True):
+    return compose("exec", "-T", "db", "psql", "-U", PG["user"], "-v", "ON_ERROR_STOP=1", "-c", sql, check=check)
 
 
-def free_port():
+def port_busy(port):
     with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind(("0.0.0.0", port))
+            return False
+        except OSError:
+            return True
+
+
+# --- leases ---------------------------------------------------------------------------
+
+def lease_path(job_id):
+    return RUN / f"{SERVICE}--{job_id}.json"
+
+
+def leases():
+    out = []
+    for p in sorted(RUN.glob("*--*.json")):
+        try:
+            out.append((p, json.loads(p.read_text())))
+        except (OSError, ValueError):
+            p.unlink(missing_ok=True)
+    return out
+
+
+def alive(lease):
+    """True when the lease's pid is still the java we started (pids get reused)."""
+    try:
+        cmd = Path(f"/proc/{lease['pid']}/cmdline").read_bytes().decode(errors="replace")
+    except OSError:
+        return False
+    return lease["jar"] in cmd
+
+
+def pick_port():
+    taken = {l["port"] for _, l in leases()}
+    for port in range(PORTS[0], PORTS[1] + 1):
+        if port not in taken and not port_busy(port):
+            return port
+    die(f"no free port in {PORTS[0]}-{PORTS[1]}")
+
+
+def stop_app(lease):
+    if alive(lease):
+        try:
+            os.killpg(lease["pid"], signal.SIGTERM)
+        except OSError:
+            pass
+        for _ in range(30):
+            if not alive(lease):
+                break
+            time.sleep(0.5)
+        else:
+            try:
+                os.killpg(lease["pid"], signal.SIGKILL)
+            except OSError:
+                pass
+
+
+def release(path, lease):
+    """Stop the app, drop its database, forget the lease. Caller holds the lock."""
+    stop_app(lease)
+    if lease.get("db") and infra_running():
+        psql(f'DROP DATABASE IF EXISTS "{lease["db"]}" WITH (FORCE)', check=False)
+    path.unlink(missing_ok=True)
+
+
+def infra_running():
+    if not (dev_dir() / "docker-compose.yml").exists():
+        return False
+    r = compose("ps", "--status", "running", "--services", check=False)
+    return set(INFRA) <= set(r.stdout.split())
+
+
+def infra_up():
+    """Start the shared infra if needed; remember when the factory started it."""
+    if infra_running():
+        return
+    ports = {"DB_PORT": "5432", "AUTH_PORT": "8080", "AWS_PORT": "4566"}
+    running = set(compose("ps", "--status", "running", "--services", check=False).stdout.split())
+    for key, default in ports.items():
+        port = int(dev_env(key, default))
+        service = {"DB_PORT": "db", "AUTH_PORT": "auth", "AWS_PORT": "aws"}[key]
+        if service not in running and port_busy(port):
+            die(f"port {port} ({service}) is used by another program (another stack?). Stop it, "
+                f"or set {key} to a free port in {dev_dir() / '.env'}; the factory never kills it", 3)
+    compose("up", "-d", "--wait", *INFRA)
+    (RUN / "infra-started-by-factory").write_text(str(dev_dir()))
+    realm = dev_dir() / "scripts" / "realm.py"
+    if realm.exists():  # the realm json is the truth; Keycloak imported it only once
+        subprocess.run([sys.executable, str(realm), "apply"], capture_output=True)
+
+
+def infra_maybe_down():
+    """The last lease is gone and the factory started the infra: stop it (data kept)."""
+    marker = RUN / "infra-started-by-factory"
+    if marker.exists() and not leases():
+        compose("stop", *INFRA, check=False)
+        marker.unlink(missing_ok=True)
+        print("verify: no job runs any more; stopped the infra the factory had started")
+
+
+def stale(lease):
+    if not alive(lease) or time.time() - lease["started"] > MAX_MINUTES * 60:
+        return True
+    jf = Path(lease["factory"]) / "jobs" / lease["job"] / "job.json"
+    try:
+        return json.loads(jf.read_text())["stage"] != "verify"
+    except (OSError, ValueError, KeyError):
+        return True
+
+
+def gc(quiet=False, infra=True):
+    with locked():
+        gone = [(p, l) for p, l in leases() if stale(l)]
+        for p, l in gone:
+            release(p, l)
+        if gone or not quiet:
+            print(f"verify: cleaned {len(gone)} stale app(s)")
+        if infra:
+            infra_maybe_down()
+
+
+# --- commands -------------------------------------------------------------------------
+
+def sync_permissions(wt):
+    realm = dev_dir() / "scripts" / "realm.py"
+    if (wt / "permissions.txt").exists() and realm.exists():
+        r = subprocess.run([sys.executable, str(realm), "sync", str(wt)], capture_output=True, text=True)
+        if r.returncode != 0:
+            die("realm sync failed: " + (r.stderr or r.stdout).strip()[-600:])
+        print("PERMISSIONS: " + r.stdout.strip().splitlines()[0])
 
 
 def up(job_id, extra):
@@ -93,78 +256,120 @@ def up(job_id, extra):
         die("docker isn't running", 3)
     if not (dev_dir() / "docker-compose.yml").exists():
         die(f"no development repo at {dev_dir()} (software-factory new development dev)", 3)
-    down(job_id, quiet=True)
-    compose("up", "-d", "--wait", *VCFG.get("infra", ["db", "auth", "aws"]))
+    gc(quiet=True, infra=False)
     wt = Path(j["worktree"])
-    # Keycloak stamps iss=http://auth.indir.local:8080/realms/indir (the yaml's issuer); keys
-    # come from localhost, so the app needs no /etc/hosts entry.
-    args = [f"--server.port={(port := free_port())}",
-            f"--spring.security.oauth2.resourceserver.jwt.jwk-set-uri={KEYCLOAK}/protocol/openid-connect/certs"]
-    persistence = (wt / "src/main/resources/liquibase").exists()
-    if persistence:
-        db = db_name(job_id)
-        psql(f'CREATE DATABASE "{db}"')
-        url = f"jdbc:postgresql://localhost:{PG['port']}/{db}"
-        for pool in ("readwrite", "readonly"):
-            args += [f"--database.{pool}.url={url}", f"--database.{pool}.username={PG['user']}",
-                     f"--database.{pool}.password={PG['password']}"]
     build = subprocess.run(["mvn", "-o", "-q", "-B", "package", "-DskipTests"], cwd=wt, capture_output=True, text=True)
     if build.returncode != 0:
         die("mvn package failed:\n" + (build.stdout + build.stderr)[-1500:])
     jar = next((p for p in sorted((wt / "target").glob("*.jar")) if not p.name.endswith("original")), None)
     if not jar:
         die("no jar in target/")
+    persistence = (wt / "src/main/resources/liquibase").exists()
     log = rd / "verify-app.log"
-    proc = subprocess.Popen(["java", "-jar", str(jar), *args, *[f"--{a}" for a in extra]],
-                            cwd=wt, stdout=log.open("w"), stderr=subprocess.STDOUT, start_new_session=True)
-    (rd / ".verify.json").write_text(json.dumps({"pid": proc.pid, "port": port, "db": persistence}))
+    with locked():
+        if lease_path(job_id).exists():
+            release(lease_path(job_id), json.loads(lease_path(job_id).read_text()))
+        infra_up()
+        sync_permissions(wt)
+        port, db = pick_port(), db_name(job_id) if persistence else None
+        # Tokens carry iss=http://auth.factory.local:8080/realms/factory (the yaml's issuer);
+        # keys come from localhost, so the app needs no /etc/hosts entry.
+        args = [f"--server.port={port}",
+                f"--spring.security.oauth2.resourceserver.jwt.jwk-set-uri={keycloak()}/protocol/openid-connect/certs"]
+        if db:
+            psql(f'DROP DATABASE IF EXISTS "{db}" WITH (FORCE)')
+            psql(f'CREATE DATABASE "{db}"')
+            url = f"jdbc:postgresql://localhost:{dev_env('DB_PORT', '5432')}/{db}"
+            for pool in ("readwrite", "readonly"):
+                args += [f"--database.{pool}.url={url}", f"--database.{pool}.username={PG['user']}",
+                         f"--database.{pool}.password={PG['password']}"]
+        proc = subprocess.Popen(["java", "-jar", str(jar), *args, *[f"--{a}" for a in extra]],
+                                cwd=wt, stdout=log.open("w"), stderr=subprocess.STDOUT, start_new_session=True)
+        lease_path(job_id).write_text(json.dumps({
+            "pid": proc.pid, "port": port, "db": db, "jar": str(jar), "job": job_id,
+            "factory": str(FACTORY), "service": SERVICE, "started": time.time()}))
     health = f"http://localhost:{port}/actuator/health"
     for _ in range(90):
         if proc.poll() is not None:
+            down(job_id, quiet=True)
             die(f"the app exited with {proc.returncode}; last lines of {log}:\n" + "\n".join(log.read_text().splitlines()[-40:]))
         try:
             with urllib.request.urlopen(health, timeout=2) as r:
                 if json.loads(r.read()).get("status") == "UP":
-                    print(f"BASE_URL: http://localhost:{port}\nLOG: {log}\nHEALTH: UP\nDATABASE: {db_name(job_id) if persistence else 'none'}")
+                    print(f"BASE_URL: http://localhost:{port}\nLOG: {log}\nHEALTH: UP\nDATABASE: {db or 'none'}")
                     return
         except OSError:
             pass
         time.sleep(2)
-    die(f"the app didn't report UP within 180s; see {log}")
+    down(job_id, quiet=True)
+    die(f"the app didn't report UP within 180s (stopped again); see {log}")
 
 
 def token(user):
     if user not in USERS:
         die(f"user is one of {', '.join(USERS)}")
     data = urllib.parse.urlencode({"grant_type": "password", "client_id": CLIENT,
-                                   "username": user, "password": USERS[user]}).encode()
+                                   "username": user, "password": user}).encode()
     try:
-        with urllib.request.urlopen(f"{KEYCLOAK}/protocol/openid-connect/token", data, timeout=10) as r:
+        with urllib.request.urlopen(f"{keycloak()}/protocol/openid-connect/token", data, timeout=10) as r:
             print(json.loads(r.read())["access_token"])
     except OSError as e:
         die(f"Keycloak refused a token for {user}: {e}")
 
 
 def down(job_id, quiet=False):
-    _, rd = job(job_id)
-    state = rd / ".verify.json"
-    if state.exists():
-        s = json.loads(state.read_text())
-        try:
-            os.killpg(s["pid"], signal.SIGTERM)
-        except OSError:
-            pass
-        state.unlink()
-    if (dev_dir() / "docker-compose.yml").exists():
-        r = compose("ps", "-q", "db", check=False)
-        if r.stdout.strip():
-            psql(f'DROP DATABASE IF EXISTS "{db_name(job_id)}" WITH (FORCE)')
+    with locked():
+        path = lease_path(job_id)
+        if path.exists():
+            release(path, json.loads(path.read_text()))
+        infra_maybe_down()
     if not quiet:
         print("verify: stopped")
 
 
+def publish(job_id):
+    """Sync the merged permissions.txt into the realm and commit + push it in the dev repo."""
+    j, _ = job(job_id)
+    dev, rel = dev_dir(), "docker-mounts/keycloak/factory-realm.json"
+    if not (dev / rel).exists() or not (Path(j["worktree"]) / "permissions.txt").exists():
+        print("verify: no realm or permissions.txt; nothing to publish")
+        return
+    with locked():
+        sync_permissions(Path(j["worktree"]))
+        git = lambda *a: subprocess.run(["git", "-C", str(dev), *a], capture_output=True, text=True)
+        if not git("status", "--porcelain", "--", rel).stdout.strip():
+            print("verify: the realm already has every permission")
+            return
+        git("add", "--", rel)
+        git("commit", "-m", f"Keycloak permissions from {REPO.name} ({job_id})", "--", rel)
+        if git("remote").stdout.strip():
+            if git("pull", "--rebase", "--autostash", "-q").returncode != 0:
+                git("rebase", "--abort")
+                print(f"verify: committed the realm in {dev}; pull failed, push it by hand")
+                return
+            pushed = git("push", "-q")
+            if pushed.returncode != 0:
+                print(f"verify: committed the realm in {dev}, push failed: {pushed.stderr.strip()[-200:]}")
+                return
+        print(f"verify: realm permissions committed in {dev}")
+
+
+def ps():
+    rows = leases()
+    for _, l in rows:
+        state = "running" if alive(l) else "dead"
+        print(f"{l['service']:20} {l['job']:12} port {l['port']}  db {l['db'] or '-'}  {state}  "
+              f"{int((time.time() - l['started']) / 60)} min")
+    print(f"verify: {len(rows)} app(s); infra {'up' if infra_running() else 'down'}"
+          f"{' (started by the factory)' if (RUN / 'infra-started-by-factory').exists() else ''}")
+
+
 def main(argv):
-    if len(argv) >= 2 and argv[1] == "up":
+    if argv == ["gc"]:
+        gc()
+    elif argv == ["ps"]:
+        ps()
+    elif len(argv) >= 2 and argv[1] == "up":
         rest, extra = argv[2:], []
         while rest:
             if rest[0] != "--arg" or len(rest) < 2:
@@ -174,7 +379,10 @@ def main(argv):
         up(argv[0], extra)
     elif len(argv) in (2, 3) and argv[1] == "token":
         token(argv[2] if len(argv) == 3 else "admin")
+    elif len(argv) == 2 and argv[1] == "publish":
+        publish(argv[0])
     elif len(argv) == 2 and argv[1] == "down":
+        job(argv[0])
         down(argv[0])
     else:
         die(__doc__.strip())

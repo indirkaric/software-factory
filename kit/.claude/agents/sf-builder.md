@@ -75,6 +75,11 @@ other jobs.
   the root, never under `modules/`; every new package has `package-info.java`.
 - Liquibase: a new numbered file in `liquibase/changes/`, included from
   `changelog.xml`, with a rollback per changeset. Never edit an existing changeset.
+- A new permission (`READ-INVOICE`): a constant in `Constants.ApiScopes`, the
+  `@PreAuthorize` on the endpoint, and a line in `permissions.txt` with the
+  groups the spec names (`READ-INVOICE  Manager,Employee`). Never edit the
+  development repo's realm: the factory adds `permissions.txt` to it, locally
+  for the check and in the development repo after the merge.
 - Other services only through `platform.md` and `BaseClient`; never read a
   sibling repo.
 - Every feature must work when the service runs: the factory boots your branch
@@ -86,8 +91,8 @@ other jobs.
   defaults or extras the spec doesn't ask for.
 - Never modify or delete an existing file that matches `protected_paths` in
   `factory/config.json` (the factory files and the checkstyle config); the gate
-  fails the branch if you do. Never lower the JaCoCo threshold, add coverage
-  exclusions or `@SuppressWarnings` to pass checkstyle. If the spec can't be met
+  fails the branch if you do. Never lower the JaCoCo threshold (the gate refuses
+  anything under 0.80), add coverage exclusions or `@SuppressWarnings` to pass checkstyle. If the spec can't be met
   without one of those, write a BLOCKED build.md that says which and why.
 
 ## Test

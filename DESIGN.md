@@ -43,6 +43,28 @@ free port with the datasource pointed at that database and the JWT keys at the l
 which stops the app and drops the database. FAIL goes back to the builder; SKIP (no Docker, no
 development repo) escalates, because nothing merges unchecked.
 
+## Permissions and the realm
+
+The old development realm modelled a permission as a realm role, a client scope of the same
+name (in the token's `scope`), a scope mapping and a default scope of the app client, with
+users getting roles through groups. `templates/dev` keeps that model (`factory-realm.json`,
+groups Administrator/Manager/Employee, `user_id`/`permission_groups` claims) and adds
+`scripts/realm.py` to change it in the json and the running Keycloak at once. A service
+declares its permissions in `permissions.txt`, checked against `Constants.ApiScopes` by a unit
+test; `verify up` syncs it into the realm, `job merge` → `verify publish` commits it in the
+development repo (under the shared lock, `pull --rebase`, push).
+
+## Parallel runs
+
+One shared infrastructure, per-job everything else: port from a leased range, database per
+job, the jar from the job's worktree. All lease changes happen under one `flock`, so two
+sessions never pick the same port or race on the realm json. Apps run in their own process
+group and are killed by group; a lease whose pid died, whose job left `verify`, or that is
+older than `verify.max_minutes` is collected by `verify gc`. Infrastructure the factory
+started is stopped when the last lease goes; infrastructure the user started is left alone.
+Rejected alternatives: per-job compose stacks (minutes per start, gigabytes of RAM),
+rewriting ports in code (dirty diffs), killing whatever holds a port (it may be the user's).
+
 ## Liquibase: what we found and what the template does now
 
 Found in identity, artifact and data-storage: changeset ids equal to the version

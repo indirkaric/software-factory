@@ -74,7 +74,9 @@ Spring Boot 3.2, Java 17: slojevi (controller → response creator → operation
 validator → repository), `Check` provjere, globalni exception handler, Keycloak JWT (realm role
 postaju `SCOPE_` authorities), headeri između servisa `service-communication-id`,
 `correlation-id`, `user-id`, `BaseClient` nad WebClientom, read/write rutiranje baze, audit
-entiteti, Liquibase, checkstyle, JaCoCo 80 %, Dockerfile i `.github/workflows/ci.yml`
+entiteti, Liquibase, checkstyle, JaCoCo ≥ 80 % (instrukcije i linije; gate odbija manje),
+`Dockerfile`, `docker-compose.yml` + `docker-compose.override.yml`, `permissions.txt` i
+`.github/workflows/ci.yml`
 (`mvn verify`, plus Liquibase update → rollback → update test za servise s bazom). Pravila su
 u `templates/java/CLAUDE.md` i `.claude/skills/*`, uključujući S3/Azure storage i
 korisnike/grupe/permisije/personal access tokene.
@@ -82,11 +84,30 @@ korisnike/grupe/permisije/personal access tokene.
 ## Development repo
 
 `docker-compose.yml` (Postgres :5432, Keycloak :8080, LocalStack :4566; Azurite i Redis na
-zahtjev), realm `indir` sa korisnicima `admin`, `manager`, `user` (lozinka = ime), bucket
-`indir-local`, i `dev-*` aliasi (`dev-up`, `dev-run <servis>`, `dev-token`, `dev-psql`,
+zahtjev), realm `factory` sa grupama Administrator/Manager/Employee i korisnicima `admin`,
+`manager`, `user`, `basic` (lozinka = ime), bucket
+`factory-local`, i `dev-*` aliasi (`dev-up`, `dev-run <servis>`, `dev-token`, `dev-psql`,
 `dev-logs`, `dev-help`). Bez e2e testova. Detalji: `templates/dev/README.md`.
 
-Ako ti već radi drugi stack na istim portovima (npr. stari stack), zaustavi ga prije `dev-up`.
+Ako ti već radi drugi stack na istim portovima, zaustavi ga ili promijeni `DB_PORT`,
+`AUTH_PORT`, `AWS_PORT` u `development/.env`.
+
+## Permisije
+
+Servis u `permissions.txt` navodi Keycloak permisije koje provjerava (`READ-USER
+Manager,Employee`); unit test pada ako kod provjerava permisiju koje tu nema. Kad npr. na
+user servisu tražiš feature sa `READ-USER`, factory je sam doda u realm development repoa
+(rola + client scope + grupa, kao u pravom realmu) za lokalnu provjeru, a nakon merge-a je
+commita i pusha u development. Projekti su uvijek jedan pored drugog u istom folderu.
+
+## Paralelne sesije i portovi
+
+Svaki job ima svoj worktree, granu, port (51000-51999, kao `--server.port`, nikad u kodu) i
+bazu `sfv_<servis>_<job>`; svi dijele jedan Postgres/Keycloak/LocalStack. Lease fajlovi u
+`~/.cache/software-factory/run` sprečavaju da dvije sesije uzmu isti port. Po završetku
+provjere (i na kraju svakog runa, `verify gc`) app se gasi, port oslobađa, baza briše; ako je
+factory sam podigao infrastrukturu, zadnji job je i gasi. Tuđi proces na portu se nikad ne
+ubija. `factory/bin/verify ps` pokaže šta radi.
 
 ## Licenca
 

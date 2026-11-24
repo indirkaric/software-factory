@@ -1,12 +1,14 @@
-# Ports on the host, so services started from an IDE reach the infrastructure.
+# Ports on the host, so services started from an IDE (and the factory's local check) reach
+# the infrastructure. Change them in .env (DB_PORT, AUTH_PORT, AWS_PORT) when another stack
+# already uses the defaults; nothing else needs to change.
 services:
   db:
-    ports: ["5432:5432"]
+    ports: ["${DB_PORT:-5432}:5432"]
   auth:
-    ports: ["8080:8080"]
+    ports: ["${AUTH_PORT:-8080}:8080"]
   aws:
-    ports: ["4566:4566"]
+    ports: ["${AWS_PORT:-4566}:4566"]
   azurite:
     ports: ["10000:10000", "10001:10001", "10002:10002"]
   redis:
-    ports: ["6379:6379"]
+    ports: ["${REDIS_PORT:-6379}:6379"]

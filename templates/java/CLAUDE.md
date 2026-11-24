@@ -76,8 +76,11 @@ module without local persistence follows `proxy-bff-conventions`.
   Never read a sibling repo; if the registry lacks something, ask.
 - **Git/infra**: no commit, push, `docker` or stack changes unless the user asks (the software
   factory's `/software-factory run` is that ask, for its own job branch).
-- **Local run**: the `development` repo provides Postgres, Keycloak (realm `indir`, users
-  `admin`/`manager`/`user`, password = name) and LocalStack; `dev-up` starts them.
+- **Local run**: the `development` repo (next to this one) provides Postgres, Keycloak (realm
+  `factory`, users `admin`/`manager`/`user`/`basic`, password = name) and LocalStack; `dev-up`
+  starts them. `docker-compose.yml` runs this service in a container on that network.
+- **Permissions**: a new one goes in `Constants.ApiScopes` and `permissions.txt` (see
+  `permissions-and-tokens`). **Coverage**: JaCoCo ≥ 0.80 (instruction and line), never lower.
 - **Markdown** files stay under 200 lines.
 - **Subagents can't ask the user.** They end with one block and the main session acts on it:
   - `## TREBA ODLUKA` — blocked: the question, 2–3 options with consequences; nothing edited.

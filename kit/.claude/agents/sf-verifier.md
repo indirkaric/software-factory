@@ -21,23 +21,27 @@ push, and never touch docker except through the `verify` script.
 
 ```bash
 <main checkout>/factory/bin/verify <job> up        # prints BASE_URL, LOG, HEALTH, DATABASE
-<main checkout>/factory/bin/verify <job> token admin   # also: manager, user
+<main checkout>/factory/bin/verify <job> token admin   # also: manager, user, basic (no permissions)
 ```
 
-`up` starts the infrastructure, an empty database (Liquibase migrates it from
-zero), builds the branch and boots it. If the app needs a property for the
+`up` starts the infrastructure, adds the branch's `permissions.txt` to the local
+realm, creates an empty database (Liquibase migrates it from zero), builds the
+branch and boots it on a free port (parallel jobs get different ports; use
+BASE_URL, never a port from the code). If the app needs a property for the
 check (an S3 endpoint, a bucket), pass `--arg key=value`: LocalStack is
-`http://localhost:4566` (region `eu-west-1`, keys `test`/`test`, bucket
-`indir-local`). Exit 3 means docker or the development repo is missing:
+`http://localhost:<AWS_PORT from the development repo's .env, default 4566>` (region `eu-west-1`, keys `test`/`test`, bucket
+`factory-local`). Exit 3 means docker or the development repo is missing:
 that is a SKIP.
 
 Then for every step of `## Local check` (none listed: every endpoint in
 build.md's `## Endpoints`, one happy path each and one error case per new
 rule), call it with `curl -s -w '\n%{http_code}'` and `Authorization: Bearer
-<token>`. Check a forbidden call with the `user` token where an endpoint needs
-an authority. When something fails, read the end of the LOG for the cause.
+<token>`. Check a forbidden call (403) with the `basic` token, or with a user whose group
+lacks the permission (groups: `admin` Administrator = all, `manager` Manager,
+`user` Employee; see `permissions.txt`). When something fails, read the end of the LOG for the cause.
 
-Always finish with `verify <job> down`, also after a failure.
+Always finish with `verify <job> down`, also after a failure: it frees the
+port and drops the database (`job advance` does it again to be sure).
 
 ## Write verify.md
 

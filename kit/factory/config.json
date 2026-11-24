@@ -78,5 +78,19 @@
       "cache_write_1h": 0.2,
       "cache_read": 0.01
     }
+  },
+  "verify": {
+    "ports": [
+      51000,
+      51999
+    ],
+    "max_minutes": 45,
+    "infra": [
+      "db",
+      "auth",
+      "aws"
+    ],
+    "realm": "factory",
+    "client_id": "factory-app"
   }
 }

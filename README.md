@@ -75,10 +75,30 @@ Spring Boot 3.2, Java 17: layered packages (controller → response creator → 
 → validator → repository), `Check` guards, global exception handler, Keycloak JWT (realm roles
 become `SCOPE_` authorities), service-to-service headers `service-communication-id`,
 `correlation-id`, `user-id`, `BaseClient` over WebClient, read/write datasource routing,
-audit entities, Liquibase, checkstyle, JaCoCo 80 %, Dockerfile, and `.github/workflows/ci.yml`
+audit entities, Liquibase, checkstyle, JaCoCo ≥ 80 % (instruction and line; the gate refuses
+less), `Dockerfile`, `docker-compose.yml` + `docker-compose.override.yml`, `permissions.txt`
+and `.github/workflows/ci.yml`
 (`mvn verify`, plus a Liquibase update → rollback → update test for persistence services).
 The conventions live in `templates/java/CLAUDE.md` and `.claude/skills/*`, including S3/Azure
 storage and users/groups/permissions/personal access tokens.
+
+## Permissions
+
+A service lists the Keycloak permissions it checks in `permissions.txt` (`READ-USER
+Manager,Employee`; a unit test fails when the code checks one that isn't listed). The factory
+adds them to the development repo's realm (`factory-realm.json`: realm role + client scope +
+group, like a real realm) during the local check, and commits that realm after the merge.
+Projects live side by side in one folder (`~/Desktop/projects/<service>`, `.../development`).
+
+## Parallel sessions and ports
+
+Every session can run its own job. Each job has its own worktree, branch, port (51000-51999,
+passed as `--server.port`, never written into code) and database `sfv_<service>_<job>`; all
+share one Postgres/Keycloak/LocalStack. Leases in `~/.cache/software-factory/run` make the
+choice race-free. `verify down` (and `job advance`, and `verify gc` at the end of a run) stop
+the app, free the port and drop the database; if the factory started the infra, the last one
+stops it again. A foreign program on an infra port is never killed: move the stack with
+`DB_PORT`/`AUTH_PORT`/`AWS_PORT` in `development/.env`. `factory/bin/verify ps` shows what runs.
 
 ## Repository layout
 

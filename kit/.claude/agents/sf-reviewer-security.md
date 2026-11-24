@@ -47,7 +47,8 @@ re-run the build. Run a command yourself only to confirm a specific finding
 - **Authorization**: every new or changed endpoint has `@PreAuthorize` with
   the authority the spec names; a caller can only read or change what it owns,
   checked against `IScopeContext` in the validator, not trusted from the
-  request body.
+  request body. Every scope in `Constants.ApiScopes` is in `permissions.txt`,
+  with no broader group than the spec names.
 - **Identity**: the `service-communication-id`/`user-id`/`correlation-id` filters and
   the client-id allowlist aren't loosened; an unknown client still gets no
   authorities; a malformed header is still ignored, not trusted.

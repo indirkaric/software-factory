@@ -4,10 +4,10 @@
 #   scripts/add-service.sh <name> <port> [--db <database>]
 #
 # - docker-compose.services.yml: the service, built from ../<name>, on <port>,
-#   alias <name>.indir.local, profiles `services` and `<name>`
+#   alias <name>.factory.local, profiles `services` and `<name>`
 # - with --db: database + role <db>_app (password <db>_app) in the init script,
 #   and in the running Postgres when it is up
-# - scripts/hosts.txt: <name>.indir.local
+# - scripts/hosts.txt: <name>.factory.local
 set -euo pipefail
 DEV="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NAME="${1:?name}"; PORT="${2:?port}"; shift 2
@@ -23,7 +23,7 @@ if f"\n  {name}:\n" in text:
 var = name.upper().replace("-", "_")
 deps = "      db:\n        condition: service_healthy\n" if db else ""
 block = f"""  {name}:
-    image: ${{{var}_IMAGE:-indir/{name}:local}}
+    image: ${{{var}_IMAGE:-factory/{name}:local}}
     build: ${{PROJECTS_DIR:-..}}/{name}
     profiles: [services, {name}]
     restart: unless-stopped
@@ -36,8 +36,8 @@ block = f"""  {name}:
       interval: 15s
       retries: 20
     networks:
-      indir:
-        aliases: [{name}.indir.local]
+      factory:
+        aliases: [{name}.factory.local]
 """
 text = text.replace("services: {}\n", "services:\n")
 open(path, "w").write(text.rstrip("\n") + "\n" + block)
@@ -56,5 +56,6 @@ ALTER DATABASE \"$DB\" OWNER TO ${DB}_app;"
     echo "add-service: database $DB ready in the running Postgres"
   fi
 fi
-grep -qxF "$NAME.indir.local" "$DEV/scripts/hosts.txt" || echo "$NAME.indir.local" >> "$DEV/scripts/hosts.txt"
+grep -qxF "$NAME.factory.local" "$DEV/scripts/hosts.txt" || echo "$NAME.factory.local" >> "$DEV/scripts/hosts.txt"
+[[ -f "$DEV/../$NAME/permissions.txt" ]] && python3 "$DEV/scripts/realm.py" sync "$DEV/../$NAME"
 echo "add-service: $NAME on port $PORT${DB:+, database $DB} (dev-run $NAME; dev-hosts to refresh /etc/hosts)"

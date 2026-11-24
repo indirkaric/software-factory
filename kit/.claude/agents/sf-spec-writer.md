@@ -61,9 +61,15 @@ Only when the change adds or changes an endpoint. One row per endpoint:
 | Method | Path | Request | Response | Status | Authority |
 |---|---|---|---|---|---|
 
-plus the error cases and their status (validation → 400, missing entity → 404,
+plus the error cases and their status (no permission → 403, validation → 400,
+missing entity → 404,
 business rule → the `BusinessException` mapping from
 `exception-handling-conventions`).
+
+## Permissions
+Only when the change needs a new one: `NAME  Group,Group` lines for
+`permissions.txt` (UPPER-KEBAB `VERB-NOUN`; groups `Manager`, `Employee`;
+`Administrator` always has every permission). Reuse an existing one when it fits.
 
 ## Data
 Only when the change touches persistence: the entity fields (name, Java type,
@@ -92,8 +98,8 @@ so make it complete.
 
 ## Local check
 How to see the change in the running service: numbered requests (method,
-path, body, test user `admin`, `manager` or `user`) and what must come back,
-with one error case per new rule; the database starts empty, so create what a
+path, body, test user `admin`, `manager`, `user` or `basic`) and what must come
+back, with one error case per new rule and a 403 for each new permission; the database starts empty, so create what a
 step needs first. `none` only for changes not visible over HTTP (the service
 is still booted, which proves wiring and migrations).
 
