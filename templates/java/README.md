@@ -2,14 +2,14 @@
 
 The starting point of every Java service the software factory creates
 (`software-factory new <name> java [proxy]`) and the one reference its agents copy
-infrastructure from. Spring Boot 3.2, Java 17, Maven, package `com.indir.<name>`.
+infrastructure from. Spring Boot 3.2, Java 17, Maven, package `<BASE_PACKAGE>.<name>` (default `com.indir`).
 
 | Path | What | In a new service |
 |---|---|---|
 | `skeleton/` | infrastructure code + tests, `pom.xml`, `Dockerfile`, `docker-compose*.yml`, `permissions.txt`, `.github/workflows/ci.yml` | yes, filled |
 | `CLAUDE.md` | architecture rules, always loaded by Claude Code | yes, + service facts |
 | `.claude/skills/*` | one skill per layer, module checklists, storage, permissions | yes |
-| `.claude/skills/inter-service-propagation/platform.md` | registry: every service's host, port, base URI | yes (snapshot) |
+| `.claude/skills/inter-service-propagation/platform.md` | registry snapshot (the live one: `<development repo>/platform.md`); empty here | yes (snapshot) |
 | `.claude/agents/*` | interactive helpers (creators, test writer, reviewers) | yes |
 | `scripts/new_service.py` | fills the placeholders, wires `--calls`, registers the port | no |
 | `REFERENCE.md` | where the skeleton came from and what was changed on purpose | no |

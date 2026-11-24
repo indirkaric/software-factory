@@ -30,7 +30,8 @@ Pipeline, state machine, gate and routing come from zazencodes' software-factory
 | `run <n>` | issue had to carry the label | the label is added | the operator chose the issue |
 | Gate | builds every time | reuses the builder hook's run on the same commit | one `mvn verify` per round |
 | Headers | company-prefixed header names | `service-communication-id`, `correlation-id`, `user-id` | no company names |
-| Package | company package | `com.indir.<x>` | |
+| Package | company package | `<BASE_PACKAGE>.<x>`, default `com.indir` | others use their own |
+| Registry | in the factory repo, pushed by `new` | `<development repo>/platform.md` | the factory repo stays read-only for its users |
 | CI | GitLab | `.github/workflows/ci.yml` | `mvn verify` on every push; migrations tested |
 
 ## The verify stage
@@ -67,6 +68,14 @@ services booted from their base branch, the flow, and a smoke pass (parameterles
 `job merge` refuses until every job is approved, and merges callees before callers.
 Rejected: one job editing several repos (one branch and PR per repo is what reviewers and
 GitHub understand), and checking each service alone (it misses contract breaks).
+
+## Reference project
+
+`--ref <path>` (per service on `new`, per job on `run`) names a local project as an example,
+for example an older service that already does something similar. It bends "one reference"
+only for the feature: the spec writer reads it and lists the relevant files as `reference`
+lines; the builder reads only those. Infrastructure still comes from the skeleton, the
+service's CLAUDE.md wins, and no name, package, header or URL is carried over.
 
 ## Parallel runs
 

@@ -17,7 +17,7 @@ what came from where and what was deliberately changed. Read it only when changi
 | `GlobalExceptionHandler` | artifact | Adds `MethodArgumentNotValidException` → 400, and Spring MVC's `ErrorResponse` keeps its status (artifact turns an unknown path into 500). |
 | datasource routing | artifact | The interceptor also matches class-level `@Transactional`. Artifact matches only the method level, so class-annotated write services read the read-only pool. |
 | `entity/common`, `BaseEntityListener`, `AuditContext` | artifact | Without the LLM-specific update rule. Listener typed to `AuditEntity`. |
-| `platform.md` | — | Starts empty; `software-factory new` appends each service it creates |
+| `platform.md` | — | Empty here; `software-factory new` appends to the development repo's copy |
 | header names | company-prefixed | `service-communication-id`, `correlation-id`, `user-id`; filters renamed to match |
 | `KeycloakRolesConverter` | new | realm roles become `SCOPE_` authorities too, so the dev realm needs no client scopes |
 | Liquibase | `0.0.1-SNAPSHOT/` folders, ids = the version | `changes/NNNN-*.sql`, unique ids, `IF NOT EXISTS`, rollback per changeset |

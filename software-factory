@@ -3,8 +3,10 @@
 #
 #   software-factory setup                 once per machine: GitHub token, Claude Code skill + agents, MCP
 #   software-factory update                pull the newest factory and reinstall it
-#   software-factory new <name> java [proxy] [--domain X] [--calls a,b] [--port N] [--public] [--offline]
-#                                          new Spring Boot service (proxy = no database) on GitHub
+#   software-factory new <name> java [proxy] [--domain X] [--calls a,b] [--port N] [--ref <path>]
+#                                          [--public] [--offline]
+#                                          new Spring Boot service (proxy = no database) on GitHub;
+#                                          --ref: a local project agents read as an example
 #   software-factory new <name> dev [--public] [--offline]
 #                                          new development repo (compose: Postgres, Keycloak, LocalStack)
 #   software-factory doctor [dir]          check the tools, the token's GitHub permissions, a repo
@@ -21,7 +23,7 @@ CONF="$HOME/.config/software-factory"
 CFG="$CONF/config.env"
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 
-usage() { sed -n '2,17p' "$HERE/software-factory" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,19p' "$HERE/software-factory" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 fail() { echo "software-factory: $*" >&2; exit 1; }
 need_setup() { [[ -f "$CFG" ]] || fail "run '$HERE/software-factory setup' first"; }
 cfg() { [[ -f "$CFG" ]] && sed -n "s/^$1=//p" "$CFG" | tail -1 || true; }

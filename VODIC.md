@@ -83,14 +83,15 @@ stari stack na istim portovima, prvo ga zaustavi ili u `development/.env` promij
 
 ## Faza C — novi servis
 
-U Claude Codeu: `/software-factory new invoice java` (ili `... java proxy` za BFF bez baze).
+U Claude Codeu: `/software-factory new invoice java` (ili `... java proxy` za BFF bez baze;
+`--ref <putanja>` daje svakom jobu lokalni projekat kao primjer).
 
 Šta se desi, sve samo:
 
-1. servis se generiše iz skeletona (`com.indir.invoice`, port 50001+), sa `CLAUDE.md`;
+1. servis se generiše iz skeletona (`<bazni paket>.invoice`, port 50001+), sa `CLAUDE.md`;
 2. `mvn verify` mora proći (unit testovi, JaCoCo, checkstyle);
-3. privatni repo `indirkaric/invoice` + push `main`, auto-merge i squash uključeni;
-4. servis se upiše u development repo (compose, baza `invoice`, alias) i u registry factoryja.
+3. privatni repo `<tvoj-račun>/invoice` + push `main`, auto-merge i squash uključeni;
+4. servis se upiše u development repo (compose, baza `invoice`, alias, registar `platform.md`).
 
 Lokalno pokretanje: `dev-run invoice`, ili iz IDE-a `mvn spring-boot:run`.
 

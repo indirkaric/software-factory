@@ -37,7 +37,11 @@ other jobs.
 2. `<job folder>/spec.md`: what to build. The acceptance criteria are your test
    plan. `issue.md` and `intake.md` are background; the spec is what you build.
    Start from its `## Files to touch`: open those files and the `example`
-   ones, and explore further only where they aren't enough.
+   ones, and explore further only where they aren't enough. `reference` lines
+   name files of a reference project the user chose, outside this repo: read
+   exactly those, read-only, for what the line says to take (domain behaviour,
+   shape). Rename everything to this service's names; never copy its package,
+   company names, header names, URLs or secrets. CLAUDE.md and the skills win.
 3. The skill files for every layer you touch, as plain files (you can't invoke
    skills): `.claude/skills/<name>/SKILL.md`. For a new module, follow
    `new-crud-module` or `new-proxy-module` step by step, reading the skill each
@@ -54,7 +58,7 @@ other jobs.
 5. `~/.config/software-factory/templates/java/skeleton/`: the factory's skeleton, the one reference for
    infrastructure code (`BaseClient`, exceptions, security filters, audit
    entities, config). No other service is a reference; `ROOT` stands for the root package and
-   `{{...}}` for generated names. When you need a piece of infrastructure the
+   `{{...}}` for generated names (a spec's `reference` files are for the feature, never for infrastructure). When you need a piece of infrastructure the
    service lacks, copy its shape from there instead of inventing one. It is
    read-only: never edit it.
 6. When a round's gate failed, `round-<N>/checks.md` and `checks.log` in the
@@ -87,7 +91,10 @@ other jobs.
   development repo's realm: the factory adds `permissions.txt` to it, locally
   for the check and in the development repo after the merge.
 - Other services only through `platform.md`, `task.md`'s contract and
-  `BaseClient`; never read a sibling repo (task.md excepted) and never edit one.
+  `BaseClient`; never read a sibling repo (task.md and the spec's `reference`
+  files excepted) and never edit one.
+- Never change a port or a base URI to make the local check pass: the factory
+  gives every app its own.
 - Every feature must work when the service runs: the factory boots your branch
   (with the task's other services and their callers) against the local
   Postgres/Keycloak/LocalStack and calls the endpoints in the spec's

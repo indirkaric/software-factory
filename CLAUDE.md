@@ -21,4 +21,5 @@ docs and commits in English (the Bosnian docs are README.bs.md and VODIC.md).
 - Markdown files stay under 200 lines. No former-employer names anywhere (package `com.indir`).
 - After changing `templates/java/skeleton`, generate both roles and run `mvn verify`
   (`templates/java/README.md`). After changing `kit/factory/bin/*`, `python3 -m py_compile`.
-- `platform.md` is changed by `new` only (it commits and pushes it).
+- The template `platform.md` stays empty: `new` registers services in the user's development
+  repo (`platform.md`), never in this repo, so others can use and `update` the factory.

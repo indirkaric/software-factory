@@ -17,7 +17,8 @@ Pravi i **nove projekte** jednom naredbom:
 ```
 
 Svaki novi projekat dobije `CLAUDE.md`, privatni GitHub repo pod računom tvog tokena i (java)
-GitHub Actions pipeline koji na svaki push pokreće unit testove. Paket `com.indir.<ime>`.
+GitHub Actions pipeline koji na svaki push pokreće unit testove. Paket `<bazni paket>.<ime>`
+(setup pita; default `com.indir`).
 
 ## Instalacija (jednom po računaru)
 
@@ -33,12 +34,17 @@ git clone https://github.com/indirkaric/software-factory.git ~/software-factory
 
 Setup provjeri alate, zadrži GitHub token s kojim si klonirao (ili pita za novi), provjeri
 njegove permisije ([GITHUB-PERMISSIONS.md](GITHUB-PERMISSIONS.md)), pita za folder projekata
-(default `~/Desktop/projects`) i instalira `/software-factory`, `/software-factory-run` i
+(default `~/Desktop/projects`) i bazni paket novih servisa, i instalira `/software-factory`, `/software-factory-run` i
 `sf-*` agente u Claude Code za svaki folder, plus `github` MCP server. Restartuj Claude Code.
 Kasnije: `software-factory update` povuče novu verziju i reinstalira.
 
 Ništa se ne instalira po servisu: prvi `/software-factory` u repou ga sam prikači (`factory/`
 je van gita) i napiše `CLAUDE.md` ako ga repo nema.
+
+Može ga koristiti bilo ko: klonira, pokrene `setup` sa svojim GitHub tokenom. Sve lično ostaje
+kod njega: repoi idu na njegov račun, registar servisa je u njegovom development repou
+(`platform.md`; dok ga nema, u `~/.config/software-factory/`), a u factory repo se nikad ne
+piše, pa `update` uvijek prođe. Linux ili WSL (macOS nije testiran).
 
 ## Korištenje
 
@@ -48,9 +54,17 @@ je van gita) i napiše `CLAUDE.md` ako ga repo nema.
 /software-factory dodaj status fakturi: DRAFT, SENT, PAID   → otvori issue i napravi ga
 /software-factory run                   svi otvoreni issue-i s labelom `factory`
 /software-factory run 1                 issue #1 odmah (isto što i /software-factory-run 1)
+/software-factory run 1 --ref ~/old/billing   … s lokalnim projektom kao primjerom
 /software-factory issues                otvoreni issue-i i njihovi jobovi
 /software-factory context               (ponovo) napiši CLAUDE.md iz koda
 ```
+
+**Referentni projekat** (opcionalno): `--ref <putanja>` je lokalni projekat koji agenti čitaju
+kao primjer (domenska logika, oblik koda), nikad ga ne mijenjaju. Kod `new … --ref` važi za
+svaki job tog servisa; kod `run <n> --ref` (ili kad ga navedeš u zahtjevu za feature) za taj
+job; `--ref none` ga isključi. Spec writer izabere relevantne fajlove i upiše ih kao
+`reference` linije; builder čita samo njih. CLAUDE.md, skillovi i skeleton i dalje imaju
+prednost, a imena, paketi, headeri i URL-ovi se nikad ne kopiraju.
 
 Možeš otvoriti više Claude Code sesija u istom repou i u svakoj raditi drugi tiket: svaki job
 ima svoj git worktree i granu, a sesija "zauzme" job prije nego što radi na njemu.

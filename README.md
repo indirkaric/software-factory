@@ -18,7 +18,8 @@ It also **creates new projects** with one command:
 ```
 
 Every new project gets a `CLAUDE.md`, a private GitHub repo under your token's account, and
-(java) a GitHub Actions pipeline that runs the unit tests on every push. Package `com.indir.<name>`.
+(java) a GitHub Actions pipeline that runs the unit tests on every push. Package
+`<base package>.<name>` (setup asks; default `com.indir`).
 
 ## Install (once per machine)
 
@@ -34,12 +35,17 @@ git clone https://github.com/indirkaric/software-factory.git ~/software-factory
 
 Setup checks the tools, keeps the GitHub token you cloned with (or asks for a new one),
 checks its permissions ([GITHUB-PERMISSIONS.md](GITHUB-PERMISSIONS.md)), asks for your projects
-folder (default `~/Desktop/projects`), and installs `/software-factory`, `/software-factory-run`
+folder (default `~/Desktop/projects`) and the base package of new services, and installs `/software-factory`, `/software-factory-run`
 and the `sf-*` agents into Claude Code for every folder, plus the `github` MCP server. Restart
 Claude Code. Later: `software-factory update` pulls and reinstalls.
 
 Nothing is installed per service: the first `/software-factory` in a repo attaches it
 (`factory/` is kept out of git) and writes a `CLAUDE.md` if the repo has none.
+
+Anyone can use it: clone, `setup` with their own GitHub token. Everything personal stays on
+their side: repos go to their account, the registry of services lives in their development
+repo (`platform.md`; in `~/.config/software-factory/` until it exists), and the factory repo
+is never written to, so `update` always fast-forwards. Linux or WSL (macOS: untested).
 
 ## Use
 
@@ -49,9 +55,17 @@ Nothing is installed per service: the first `/software-factory` in a repo attach
 /software-factory add a status to invoices: DRAFT, SENT, PAID   → opens an issue and builds it
 /software-factory run                   every open issue labeled `factory`
 /software-factory run 1                 issue #1 now (same as /software-factory-run 1)
+/software-factory run 1 --ref ~/old/billing   … with a local project as the example
 /software-factory issues                open issues and their jobs
 /software-factory context               (re)write CLAUDE.md from the code
 ```
+
+**Reference project** (optional): `--ref <path>` names a local project the agents read as an
+example (domain logic, shape), never edit. On `new … --ref` it is the default for every job of
+that service; on `run <n> --ref` (or a feature request that names one) for that job;
+`--ref none` drops the default. The spec writer picks its relevant files and lists them as
+`reference` lines; the builder reads only those. CLAUDE.md, the skills and the skeleton still
+win, and names, packages, headers and URLs are never copied from it.
 
 Open several Claude Code sessions in the same repo and run different issues in each: every
 job has its own git worktree and branch, and a session claims a job before it works on it.
@@ -119,7 +133,7 @@ setup.sh new-service.sh   what it runs; lib/attach.sh, lib/doctor.sh
 kit/.claude/              /software-factory skills and sf-* agents (installed into ~/.claude)
 kit/factory/              runtime copied into a service: bin/job gate route verify, checks.sh, config.json, dashboard
 kit/hooks/gate-hook       the builder's Stop hook
-templates/java/           skeleton, CLAUDE.md, skills, registry (platform.md), generator
+templates/java/           skeleton, CLAUDE.md, skills, empty registry (platform.md), generator
 templates/dev/            development repo: compose, realm, LocalStack hooks, dev-* aliases
 ```
 

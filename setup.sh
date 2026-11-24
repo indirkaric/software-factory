@@ -1,24 +1,26 @@
 #!/usr/bin/env bash
 # One-time setup on a machine (run through `./software-factory setup`).
 #
-#   ./setup.sh [--token-file <file>] [--projects <dir>] [--no-mcp]
+#   ./setup.sh [--token-file <file>] [--projects <dir>] [--package com.example] [--no-mcp]
 #
 # - checks the tools (git, gh, python3, java 17, mvn, claude; docker for local checks)
 # - GitHub token: keeps the one gh is logged in with (the one you cloned with), or
 #   takes a new one (asked hidden, or --token-file) and logs gh in with it
 # - checks what the token may do (see GITHUB-PERMISSIONS.md)
-# - writes ~/.config/software-factory/config.env (no token in it: gh keeps the token)
+# - writes ~/.config/software-factory/config.env (no token in it: gh keeps the token): the
+#   projects folder and the base package of new services (<package>.<service>)
 # - registers the `github` MCP server for Claude Code (user scope; needs docker)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TOKEN_FILE=""; PROJECTS=""; MCP=1
+TOKEN_FILE=""; PROJECTS=""; PACKAGE=""; MCP=1
 while (( $# )); do
   case "$1" in
     --token-file) TOKEN_FILE="$2"; shift 2 ;;
     --projects) PROJECTS="$2"; shift 2 ;;
+    --package) PACKAGE="$2"; shift 2 ;;
     --no-mcp) MCP=0; shift ;;
-    -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -80,6 +82,10 @@ PROJECTS="${PROJECTS:-$HOME/Desktop/projects}"
 if [[ -t 0 ]]; then read -rp "==> folder for your projects [$PROJECTS]: " p; PROJECTS="${p:-$PROJECTS}"; fi
 PROJECTS="${PROJECTS/#\~/$HOME}"; mkdir -p "$PROJECTS"
 DEV="$(sed -n 's/^DEV_REPO=//p' "$CONF/config.env" 2>/dev/null)"; DEV="${DEV:-development}"
+PACKAGE="${PACKAGE:-$(sed -n 's/^BASE_PACKAGE=//p' "$CONF/config.env" 2>/dev/null)}"
+PACKAGE="${PACKAGE:-com.indir}"
+if [[ -t 0 ]]; then read -rp "==> base package of new services (<package>.<service>) [$PACKAGE]: " p; PACKAGE="${p:-$PACKAGE}"; fi
+[[ "$PACKAGE" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$ ]] || fail "not a Java package: $PACKAGE"
 
 mkdir -p "$CONF"
 cat > "$CONF/config.env" <<EOF
@@ -87,6 +93,7 @@ cat > "$CONF/config.env" <<EOF
 GITHUB_OWNER=$LOGIN
 PROJECTS_DIR=$PROJECTS
 DEV_REPO=$DEV
+BASE_PACKAGE=$PACKAGE
 REPO_VISIBILITY=private
 EOF
 echo "==> wrote $CONF/config.env"

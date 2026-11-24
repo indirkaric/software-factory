@@ -5,11 +5,13 @@ Deterministic on purpose: the infrastructure is copied, never re-generated, so e
 service starts from the same verified code. Usage:
 
     python3 scripts/new_service.py --name invoice --role persistence --domain Invoice \
-        [--calls identity] [--port 50001] [--root-package com.indir.invoice] \
-        [--db invoice] [--api-prefix invoice] [--coverage 0.80] [--target ../invoice]
+        [--calls identity] [--port 50001] [--package-prefix com.indir | --root-package com.indir.invoice] \
+        [--db invoice] [--api-prefix invoice] [--coverage 0.80] [--target ../invoice] \
+        [--registry <platform.md>]
 
-Other services are known only through .claude/skills/inter-service-propagation/platform.md;
-the script never reads a sibling repo. Changes needed outside the new repo are written to
+Other services are known only through the registry (--registry; default this template's
+empty .claude/skills/inter-service-propagation/platform.md). The new repo gets a snapshot of it
+there, and the new service is appended to it. The script never reads a sibling repo. Changes needed outside the new repo are written to
 <target>/PLATFORM_CHANGES.md, not applied.
 """
 import argparse
@@ -20,7 +22,8 @@ from pathlib import Path
 
 TEMPLATE = Path(__file__).resolve().parent.parent
 SKELETON = TEMPLATE / "skeleton"
-REGISTRY = TEMPLATE / ".claude/skills/inter-service-propagation/platform.md"
+REGISTRY_REL = ".claude/skills/inter-service-propagation/platform.md"
+REGISTRY = TEMPLATE / REGISTRY_REL
 FIRST_PORT = 50001
 
 # Paths (relative to the instantiated repo) that only a persistence service keeps.
@@ -50,7 +53,9 @@ def parse_args():
     parser.add_argument("--calls", default="", help="comma-separated downstream services from the registry")
     parser.add_argument("--role", required=True, choices=["persistence", "proxy"])
     parser.add_argument("--domain", required=True, help="PascalCase first domain, e.g. Invoice")
-    parser.add_argument("--root-package")
+    parser.add_argument("--root-package", help="default: <package-prefix>.<name with underscores>")
+    parser.add_argument("--package-prefix", default="com.indir")
+    parser.add_argument("--registry", type=Path, help="platform.md to read and append to (default: the template's)")
     parser.add_argument("--db", help="database and schema name, default: name with underscores")
     parser.add_argument("--api-prefix")
     parser.add_argument("--coverage", default="0.80")
@@ -65,7 +70,7 @@ def parse_args():
     if not re.match(r"^0(\.\d+)?$|^1(\.0+)?$", args.coverage) or float(args.coverage) < 0.80:
         sys.exit(f"--coverage must be between 0.80 and 1: {args.coverage}")
     snake = args.name.replace("-", "_")
-    args.root_package = args.root_package or f"com.indir.{snake}"
+    args.root_package = args.root_package or f"{args.package_prefix}.{snake}"
     if not re.match(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$", args.root_package):
         sys.exit(f"--root-package is not a valid package: {args.root_package}")
     args.db = args.db or snake
@@ -201,7 +206,12 @@ Infrastructure comes from the software factory's skeleton
 
 
 def main():
+    global REGISTRY
     args = parse_args()
+    if args.registry:
+        REGISTRY = args.registry.expanduser().resolve()
+        if not REGISTRY.exists():
+            sys.exit(f"--registry {REGISTRY} doesn't exist")
     if args.target.exists() and any(args.target.iterdir()):
         sys.exit(f"Target is not empty, refusing to overwrite: {args.target}")
     rows, names = read_registry()
@@ -211,6 +221,7 @@ def main():
     shutil.copytree(SKELETON, args.target, dirs_exist_ok=True)
     shutil.copy2(TEMPLATE / "CLAUDE.md", args.target / "CLAUDE.md")
     shutil.copytree(TEMPLATE / ".claude", args.target / ".claude", dirs_exist_ok=True)
+    shutil.copy2(REGISTRY, args.target / REGISTRY_REL)  # the registry as it is now
 
     for rel in TEMPLATE_ONLY + (PERSISTENCE_ONLY if args.role == "proxy" else []):
         path = args.target / rel
@@ -250,7 +261,7 @@ def main():
     if not args.no_register:
         register(args, values)
     print(f"Created {args.target} ({args.role}, port {args.port}, package {args.root_package})")
-    print(f"Registry: {'skipped' if args.no_register else REGISTRY.relative_to(TEMPLATE)}; outside changes: {args.target / 'PLATFORM_CHANGES.md'}")
+    print(f"Registry: {'skipped' if args.no_register else REGISTRY}; outside changes: {args.target / 'PLATFORM_CHANGES.md'}")
     print(f"Next: cd {args.target} && mvn verify")
 
 

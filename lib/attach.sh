@@ -39,7 +39,7 @@ cfg = json.load(open(path))
 if keep:
     old = json.loads(keep)
     for k in ("concurrency", "max_rounds", "auto_merge", "merge_method", "ci_wait_minutes",
-              "lease_minutes", "routing", "surface_reviewers", "verify"):
+              "lease_minutes", "routing", "surface_reviewers", "verify", "reference"):
         if k in old:
             cfg[k] = old[k]
     cfg["protected_paths"] = sorted(set(cfg["protected_paths"]) | set(old.get("protected_paths", [])))

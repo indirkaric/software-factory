@@ -27,6 +27,8 @@ role + a client scope + a scope mapping, all one name (`READ-USER`); services re
 - `docker-mounts/postgres/init-scripts/01_create_databases.sql`: runs on an empty volume only.
 - `docker-mounts/keycloak/factory-realm.json`: imported on Keycloak's first start.
 - `docker-mounts/localstack/*.sh`: LocalStack ready hooks (buckets, queues).
+- `platform.md`: the registry of services (host, port, base URI), written by `software-factory
+  new`; new services get a snapshot of it.
 - `scripts/realm.py`: permissions (realm roles, client scopes, groups).
 - `scripts/aliases.sh`: the `dev-*` shell functions (`dev-help`); `scripts/install-aliases.sh`.
 - `scripts/hosts.txt` + `scripts/setup-hosts.sh`: `*.factory.local` → 127.0.0.1 in /etc/hosts.

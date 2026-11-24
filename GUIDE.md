@@ -74,10 +74,11 @@ other stack that uses the same ports first, or move this one with `DB_PORT`, `AU
 ## Phase C — a new service
 
 In Claude Code: `/software-factory new invoice java` (or `... java proxy` for a BFF without a
-database). It generates the service (`com.indir.invoice`, port 50001+) with its `CLAUDE.md`,
+database; add `--ref <path>` to give every job a local project as example). It generates the
+service (`<base package>.invoice`, port 50001+) with its `CLAUDE.md`,
 runs `mvn verify`, creates the private repo and pushes `main` with auto-merge and squash on,
-and registers the service in the development repo (compose, database, host alias) and in the
-factory's registry. Run it locally with `dev-run invoice`, or `mvn spring-boot:run` from the IDE.
+and registers the service in the development repo (compose, database, host alias, registry
+`platform.md`). Run it locally with `dev-run invoice`, or `mvn spring-boot:run` from the IDE.
 
 ## Phase D — every day
 

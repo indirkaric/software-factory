@@ -1,7 +1,7 @@
 ---
 name: software-factory
 description: Run the Java backend software factory on the GitHub issues of the service in this folder (one pull request per issue, merged when approved and green), or create a new service or development repo from the factory's templates. Use when the user types /software-factory run, /software-factory run <n>, /software-factory issues, /software-factory new <name> java|dev [proxy], /software-factory context, or /software-factory followed by anything else (a question, feedback on a job, a new feature).
-argument-hint: "run | run <n> [<n>...] | issues | new <name> java [proxy] | new <name> dev | context | <question, feedback or feature>"
+argument-hint: "run | run <n> [<n>...] [--ref <path>] | issues | new <name> java [proxy] [--ref <path>] | new <name> dev | context | <question, feedback or feature>"
 ---
 
 # Software factory
@@ -65,12 +65,12 @@ Don't poll: end the turn with a one-line status. Spawn independent agents
 (different jobs, one round's reviewers) in one message.
 
 Every job prompt starts with this header, from `job.json`:
-
 ```
 Job: <id>. Job folder: <repo>/factory/jobs/<id>/. Main checkout: <repo>. Worktree: <worktree>. Branch: <branch>. Base: origin/<base>. Issue: #<n>.
 ```
 
-When `job.json` has `task`, append ` Task: <task>/task.md.` Keep `Job folder:
+When `job.json` has `task`, append ` Task: <task>/task.md.`; for the spec-writer,
+when it has `reference`, also ` Reference: <reference>.` Keep `Job folder:
 <path>/` exactly so: cost tracking and the builder's gate hook find the job by it. Name the builder `builder-<id>`; resume it with
 `SendMessage` when this session spawned it, else spawn a new `sf-builder`
 told it is resuming. Report one line per transition, e.g.
@@ -118,15 +118,14 @@ told it is resuming. Report one line per transition, e.g.
   round-<N-1>/verify.md, fix it, push, update build.md.`; `needs-human` → tell
   the user (on SKIP: what to start); unchanged → waits for the next check.
   The verifier replies `VERIFY: NOT RUN …` → `job task <id>` again.
-  Never change ports in code: each app gets its own (`verify ps`).
 - **approve**: `ESCALATE` → `job advance <id> needs-human`. `APPROVE` → `job
   task <id>`; for `TASK: merge <service> <command>` run that command in the
   background (it waits for GitHub Actions, up to `ci_wait_minutes`), then `job
   task` again until `done`. `wait`: other jobs aren't approved yet; `blocked`:
   as in **verify**.
 
-A job is done for this run at `merged`, `rejected`, `needs-info` or `needs-human`
-(a task job waiting in verify or approve is not, unless `TASK: blocked`).
+A job is done for this run at `merged`, `rejected`, `needs-info` or `needs-human` (a task
+job waiting in verify or approve is not, unless `TASK: blocked`).
 
 ## /software-factory issues
 
@@ -152,7 +151,8 @@ advance <id> intake`, then intake again.
 
 ## /software-factory run <n> [<n>...]
 
-The same for exactly these issues, without asking: resume, else `job create <n>`.
+The same for exactly these issues, without asking: resume, else `job create <n>`
+(+ `--ref <path>` when the user named a local reference project; `--ref none` drops the default).
 
 ## /software-factory <anything>
 
@@ -167,7 +167,7 @@ Work out what the user wants (ask which job when unclear); state changes go thro
 - **Answer** to a `needs-info` question: post it on the issue in their words
   (`gh issue comment <n> --body …`), then `job advance <n> intake`.
 - **A new feature**: write a short issue (title, what, why, acceptance) from
-  their words, show it; on their yes `gh issue create --label factory`, run it.
+  their words, show it; on their yes `gh issue create --label factory`, run it (any `--ref` too).
 
 ## /software-factory context
 
@@ -179,11 +179,12 @@ code confirms, fix what it contradicts, rewrite it.`). Show the diff.
 Not a job. Kinds: `java` (persistence service, own Postgres database), `java
 proxy` (proxy/BFF, no database, calls other services), `dev` (development repo).
 Missing kind: ask. Optional, only when the user said so: `--domain <Entity>`
-(default: the name in PascalCase), `--calls a,b`. Say in one line what will be
+(default: the name in PascalCase), `--calls a,b`, `--ref <path>` (a local project
+every job of the new service reads as an example). Say in one line what will be
 created, then run in the background:
 
 ```bash
-~/.local/bin/software-factory new <name> java [proxy] [--domain X] [--calls a,b]
+~/.local/bin/software-factory new <name> java [proxy] [--domain X] [--calls a,b] [--ref <path>]
 ~/.local/bin/software-factory new <name> dev
 ```
 

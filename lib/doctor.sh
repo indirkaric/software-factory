@@ -19,7 +19,7 @@ kind="classic"; gh auth token | grep -q '^github_pat_' && kind="fine-grained"
 expiry="$(sed -n 's/^[Gg]ithub-[Aa]uthentication-[Tt]oken-[Ee]xpiration: //p' <<<"$headers" | tr -d '\r')"
 echo "    user $login, $kind token${expiry:+, expires $expiry}"
 if [[ -n "$expiry" ]]; then
-  days=$(( ( $(date -d "$expiry" +%s) - $(date +%s) ) / 86400 ))
+  days="$(python3 -c 'import sys, time, datetime as d; t = d.datetime.strptime(sys.argv[1][:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=d.timezone.utc); print(int((t.timestamp() - time.time()) // 86400))' "$expiry" 2>/dev/null || echo 99)"
   (( days < 14 )) && echo "    WARNING  the token expires in $days days: make a new one and run software-factory setup"
 fi
 if [[ "$kind" == classic ]]; then
