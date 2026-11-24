@@ -47,16 +47,6 @@ It prints the token's user, kind and expiry, and probes issues, PRs, Actions and
 Administration on that repo without changing anything. Ispiše korisnika, vrstu i istek
 tokena i provjeri permisije na tom repou bez ikakvih izmjena.
 
-## Your current token (checked 2026-11-24) · Tvoj trenutni token
-
-Fine-grained, user `indirkaric`, expires **2026-12-06**. Issues: write ✓. Missing:
-**Administration: write** (so `new` can't create repos or turn on auto-merge yet) and
-**Actions: read** on private repos. Make a new token with the table above, then run
-`software-factory setup` and choose "n" to enter it.
-
-Nedostaje **Administration: write** (bez njega `new` ne može napraviti repo) i **Actions:
-read**. Napravi novi token po tabeli iznad pa pokreni `software-factory setup` i odaberi "n".
-
 ## Branch protection
 
 Private repos on a free account have no branch protection, so GitHub's own auto-merge has

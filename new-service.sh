@@ -12,7 +12,7 @@
 #               job of the new service (config.json "reference"; `job create --ref` overrides)
 #   --offline   local only: no GitHub repo, no push, no registry change (for trials)
 #
-# java/proxy: generate from templates/java (package BASE_PACKAGE.<name>), mvn verify, git init,
+# java/proxy: generate from templates/java (package BASE_PACKAGE.<name>, default com.<user>), mvn verify, git init,
 # private GitHub repo under the token's account (auto-merge and squash on, branches deleted on
 # merge), push main, attach the factory, register the service in the development repo and in
 # the registry: <development repo>/platform.md, or ~/.config/software-factory/platform.md
@@ -115,7 +115,8 @@ ROLE=persistence; [[ "$KIND" == proxy ]] && ROLE=proxy
 DOMAIN="${DOMAIN:-$(python3 -c 'import sys; print("".join(w.capitalize() for w in sys.argv[1].split("-")))' "$NAME")}"
 step "generate $NAME ($ROLE, domain $DOMAIN${CALLS:+, calls $CALLS})"
 PKG="$(cfg BASE_PACKAGE)"
-ARGS=(--name "$NAME" --role "$ROLE" --domain "$DOMAIN" --target "$TARGET" --package-prefix "${PKG:-com.indir}" --registry "$REG")
+ARGS=(--name "$NAME" --role "$ROLE" --domain "$DOMAIN" --target "$TARGET" --registry "$REG")
+[[ -n "$PKG" ]] && ARGS+=(--package-prefix "$PKG")   # unset: com.<your user name>
 [[ -n "$CALLS" ]] && ARGS+=(--calls "$CALLS")
 [[ -n "$PORT" ]] && ARGS+=(--port "$PORT")
 (( ONLINE )) || ARGS+=(--no-register)

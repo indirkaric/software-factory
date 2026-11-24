@@ -2,7 +2,7 @@
 
 The starting point of every Java service the software factory creates
 (`software-factory new <name> java [proxy]`) and the one reference its agents copy
-infrastructure from. Spring Boot 3.2, Java 17, Maven, package `<BASE_PACKAGE>.<name>` (default `com.indir`).
+infrastructure from. Spring Boot 3.2, Java 17, Maven, package `<BASE_PACKAGE>.<name>` (default `com.<user>`).
 
 | Path | What | In a new service |
 |---|---|---|

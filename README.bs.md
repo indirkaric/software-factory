@@ -18,7 +18,7 @@ Pravi i **nove projekte** jednom naredbom:
 
 Svaki novi projekat dobije `CLAUDE.md`, privatni GitHub repo pod računom tvog tokena i (java)
 GitHub Actions pipeline koji na svaki push pokreće unit testove. Paket `<bazni paket>.<ime>`
-(setup pita; default `com.indir`).
+(setup pita; default `com.<tvoj korisnik>`).
 
 ## Instalacija (jednom po računaru)
 

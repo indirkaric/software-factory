@@ -5,7 +5,7 @@ Deterministic on purpose: the infrastructure is copied, never re-generated, so e
 service starts from the same verified code. Usage:
 
     python3 scripts/new_service.py --name invoice --role persistence --domain Invoice \
-        [--calls identity] [--port 50001] [--package-prefix com.indir | --root-package com.indir.invoice] \
+        [--calls identity] [--port 50001] [--package-prefix com.acme | --root-package com.acme.invoice] \
         [--db invoice] [--api-prefix invoice] [--coverage 0.80] [--target ../invoice] \
         [--registry <platform.md>]
 
@@ -46,6 +46,33 @@ MARKERS = re.compile(r"[ \t]*(<!-- @persistence:(start|end) -->|# @persistence:(
 NAME = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
 
 
+def package_word(name):
+    """A user name as a package segment: lowercase letters and digits, never starting with a digit."""
+    import unicodedata
+    ascii_name = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode()
+    word = re.sub(r"[^a-z0-9]", "", ascii_name.lower())
+    return ("u" + word if word[:1].isdigit() else word)
+
+
+def default_prefix(owner=""):
+    """com.<user>: the machine's user, else the GitHub account (setup's), else com.example."""
+    import getpass
+    conf = Path.home() / ".config/software-factory/config.env"
+    if not owner and conf.exists():
+        owner = next((l.split("=", 1)[1].strip() for l in conf.read_text().splitlines()
+                      if l.startswith("GITHUB_OWNER=")), "")
+    try:
+        machine = getpass.getuser()
+    except Exception:  # no user name in the environment
+        machine = ""
+    generic = {"", "root", "user", "admin", "ubuntu", "runner", "vscode", "codespace", "dev", "developer"}
+    for name in (machine, owner):
+        word = package_word(name)
+        if word not in generic and word not in {"abstract", "class", "package", "import", "new", "default"}:
+            return f"com.{word}"
+    return "com.example"
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--name", required=True, help="kebab-case service name, e.g. invoice")
@@ -54,7 +81,7 @@ def parse_args():
     parser.add_argument("--role", required=True, choices=["persistence", "proxy"])
     parser.add_argument("--domain", required=True, help="PascalCase first domain, e.g. Invoice")
     parser.add_argument("--root-package", help="default: <package-prefix>.<name with underscores>")
-    parser.add_argument("--package-prefix", default="com.indir")
+    parser.add_argument("--package-prefix", help="default: com.<your user name> (default_prefix)")
     parser.add_argument("--registry", type=Path, help="platform.md to read and append to (default: the template's)")
     parser.add_argument("--db", help="database and schema name, default: name with underscores")
     parser.add_argument("--api-prefix")
@@ -70,7 +97,7 @@ def parse_args():
     if not re.match(r"^0(\.\d+)?$|^1(\.0+)?$", args.coverage) or float(args.coverage) < 0.80:
         sys.exit(f"--coverage must be between 0.80 and 1: {args.coverage}")
     snake = args.name.replace("-", "_")
-    args.root_package = args.root_package or f"{args.package_prefix}.{snake}"
+    args.root_package = args.root_package or f"{args.package_prefix or default_prefix()}.{snake}"
     if not re.match(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$", args.root_package):
         sys.exit(f"--root-package is not a valid package: {args.root_package}")
     args.db = args.db or snake

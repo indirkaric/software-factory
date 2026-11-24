@@ -30,7 +30,7 @@ Pipeline, state machine, gate and routing come from zazencodes' software-factory
 | `run <n>` | issue had to carry the label | the label is added | the operator chose the issue |
 | Gate | builds every time | reuses the builder hook's run on the same commit | one `mvn verify` per round |
 | Headers | company-prefixed header names | `service-communication-id`, `correlation-id`, `user-id` | no company names |
-| Package | company package | `<BASE_PACKAGE>.<x>`, default `com.indir` | others use their own |
+| Package | company package | `<BASE_PACKAGE>.<x>`, default `com.<user>` | nobody's name is built in |
 | Registry | in the factory repo, pushed by `new` | `<development repo>/platform.md` | the factory repo stays read-only for its users |
 | CI | GitLab | `.github/workflows/ci.yml` | `mvn verify` on every push; migrations tested |
 

@@ -83,7 +83,8 @@ if [[ -t 0 ]]; then read -rp "==> folder for your projects [$PROJECTS]: " p; PRO
 PROJECTS="${PROJECTS/#\~/$HOME}"; mkdir -p "$PROJECTS"
 DEV="$(sed -n 's/^DEV_REPO=//p' "$CONF/config.env" 2>/dev/null)"; DEV="${DEV:-development}"
 PACKAGE="${PACKAGE:-$(sed -n 's/^BASE_PACKAGE=//p' "$CONF/config.env" 2>/dev/null)}"
-PACKAGE="${PACKAGE:-com.indir}"
+# default: com.<machine user>, else com.<GitHub login> (the same rule as new_service.py)
+PACKAGE="${PACKAGE:-$(python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import new_service as n; print(n.default_prefix(sys.argv[2]))' "$HERE/templates/java/scripts" "$LOGIN")}"
 if [[ -t 0 ]]; then read -rp "==> base package of new services (<package>.<service>) [$PACKAGE]: " p; PACKAGE="${p:-$PACKAGE}"; fi
 [[ "$PACKAGE" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$ ]] || fail "not a Java package: $PACKAGE"
 

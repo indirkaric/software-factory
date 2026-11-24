@@ -18,7 +18,8 @@ docs and commits in English (the Bosnian docs are README.bs.md and VODIC.md).
 ## Rules
 
 - Agents keep their one-file / one-line-reply contracts; scripts parse those first lines.
-- Markdown files stay under 200 lines. No former-employer names anywhere (package `com.indir`).
+- Markdown files stay under 200 lines. No former-employer or personal names anywhere: the package is
+  `BASE_PACKAGE` (default `com.<user>`).
 - After changing `templates/java/skeleton`, generate both roles and run `mvn verify`
   (`templates/java/README.md`). After changing `kit/factory/bin/*`, `python3 -m py_compile`.
 - The template `platform.md` stays empty: `new` registers services in the user's development

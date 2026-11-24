@@ -19,7 +19,7 @@ It also **creates new projects** with one command:
 
 Every new project gets a `CLAUDE.md`, a private GitHub repo under your token's account, and
 (java) a GitHub Actions pipeline that runs the unit tests on every push. Package
-`<base package>.<name>` (setup asks; default `com.indir`).
+`<base package>.<name>` (setup asks; default `com.<your user name>`).
 
 ## Install (once per machine)
 
