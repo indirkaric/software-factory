@@ -1,38 +1,78 @@
 # Design
 
-The pipeline, state machine and scripts come from zazencodes'
-software-factory-claude-code-v2. Read its DESIGN.md for the reasoning behind
-issues-as-queue, one orchestrator, scripts as the spine and PR-per-issue. This
-file records what changed for a Java/Spring Boot backend built from
-project-template.
+Pipeline, state machine, gate and routing come from zazencodes' software-factory-claude-code-v2
+(GPLv3). This file records what this factory does differently and why.
 
-## Unchanged
+## Principles
 
-- `factory/bin/job`, `gate`, `route`: the transitions, the gate's protected
-  paths and the main-checkout `checks.sh`, routing by risk and surfaces, merge
-  through `gh pr merge`, cost from subagent transcripts.
-- The orchestrator skill's flow and every agent's one-file / one-line contract.
-- The dashboard.
+- **Scripts are the spine.** `factory/bin/job` is the only writer of `job.json` and the only
+  thing that talks to GitHub; it refuses illegal moves. Agents write one file each and reply
+  with one line, so the orchestrator's context lasts a whole run (token economy).
+- **One reference.** `templates/java` is the only example agents copy infrastructure from;
+  other services are never read as examples.
+- **Nothing per service to install or commit.** The skill and agents live in `~/.claude`; the
+  runtime (`factory/`) is attached on first use and hidden through `.git/info/exclude`.
+- **Every feature runs before it merges.** Unit tests (gate), reviews, then the branch is
+  booted against the development stack and called over HTTP (verify), then GitHub Actions.
 
-## Changed
+## Changes from the earlier version of this repo
 
-| Area | Original | Here | Why |
+| Area | Before | Now | Why |
 |---|---|---|---|
-| Checks | placeholder filled at install | `mvn -o clean verify` | project-template's gate is tests + JaCoCo + checkstyle in one Maven run; offline like the template |
-| Reviewers | code, security, ux, ui | code, api, db, integration, security | a backend has no pages; its risk sits in the REST contract, the schema and cross-service calls |
-| Surfaces | `ui`, `security` | `api`, `db`, `integration`, `security` | they map one-to-one to template skills |
-| Conventions | the agents' generic checklists | the agents read the service's CLAUDE.md, the layer skills, `code-reviewer.md` and `integration-flow-auditor.md` | one source of truth: change a rule in the template and the factory follows it |
-| "Agent behavior" | n/a | the factory's formats replace `## TREBA ODLUKA` / `## VERDIKT`; `/factory run` authorizes commits on `factory/*` only | the template's interactive agents can ask the main session; factory agents report through files |
-| Ports, browser | dev server + `agent-browser` per job | removed | persistence services need Postgres; verification is by unit tests |
-| Approver escalations | generic | security/, non-additive Liquibase, `pom.xml` deps, CI/Docker, `platform.md`, breaking API | what a backend team must always see |
-| Protected paths | factory files | + `src/main/resources/checkstyle/*` | a branch must not relax the rules it is judged by |
-| Unknown model price | the job script dies | warns and leaves it out of the cost | a new model id shouldn't stop the pipeline |
-| Install | agent copies from raw GitHub URLs | `install.sh` | deterministic, works with a private repo, fixes Java's `bin` gitignore |
-| Defaults | concurrency 3, merge | concurrency 2, squash | Maven builds are heavier; squash keeps service history one commit per issue |
+| Install | `install.sh` per service, committed | `software-factory setup` once per machine | simple install; services stay clean |
+| Names | `/factory`, agents `intake`, `builder`… | `/software-factory`, `sf-*` agents | no clash with other factories or a service's own agents |
+| New projects | separate project-template | `new <name> java [proxy]` / `dev` from `templates/` | one versioned unit |
+| CLAUDE.md | assumed present | `sf-context` writes it when missing; every new project has one | agents read one file instead of exploring |
+| PR | builder ran `gh pr create` | `job advance … gate` opens the draft PR | fewer tools in an agent's hands |
+| Local check | none | `verify` stage: `sf-verifier` + `factory/bin/verify` | "every feature checked locally" |
+| Merge | `gh pr merge` right away | waits for GitHub Actions (`ci_wait_minutes`), then squash | free private repos have no branch protection |
+| Parallel sessions | one orchestrator | per-job claims (`job claim`, lease) and a serialized `job create` | several Claude Code sessions per repo |
+| `run <n>` | issue had to carry the label | the label is added | the operator chose the issue |
+| Gate | builds every time | reuses the builder hook's run on the same commit | one `mvn verify` per round |
+| Headers | company-prefixed header names | `service-communication-id`, `correlation-id`, `user-id` | no company names |
+| Package | company package | `com.indir.<x>` | |
+| CI | GitLab | `.github/workflows/ci.yml` | `mvn verify` on every push; migrations tested |
+
+## The verify stage
+
+`factory/bin/verify <job> up` starts the development repo's `db auth aws` (never stops or wipes
+anything), creates an empty database `sfv_<job>`, builds the worktree's jar and runs it on a
+free port with the datasource pointed at that database and the JWT keys at the local Keycloak.
+`sf-verifier` (Sonnet) calls the spec's `## Local check` as `admin`/`manager`/`user`, writes
+`round-N/verify.md` (`VERIFY: PASS | FAIL | SKIP`, tied to the commit), and always runs `down`,
+which stops the app and drops the database. FAIL goes back to the builder; SKIP (no Docker, no
+development repo) escalates, because nothing merges unchecked.
+
+## Liquibase: what we found and what the template does now
+
+Found in identity, artifact and data-storage: changeset ids equal to the version
+(`Author:0.0.1-SNAPSHOT`), so uniqueness hangs on file paths; `logicalFilePath` copy-paste
+clashes; Windows `\` include paths; rollbacks like `DELETE FROM identity.permission` that wipe
+whole tables; `CREATE SCHEMA` without `IF NOT EXISTS`; a `DROP TABLE ... CASCADE` at the top
+of a changeset; no preconditions; migrations never run in unit tests.
+
+The template now: `liquibase/changes/NNNN-<what>.sql`, explicit ordered includes, unique ids
+`<service>:NNNN-<what>`, one exact rollback per changeset (never deleting more than it added),
+idempotent DDL, seed data only with a context, additive-only changes without a human, and two
+automated checks: CI runs `liquibase:updateTestingRollback` on an empty Postgres, and the
+verify stage migrates an empty database from zero.
+
+Suggestions for the existing services: move to unique changeset ids for new files (old ones
+stay as they are, they have run); fix the table-wiping rollbacks; replace `\` in includes;
+add the CI rollback test; for renames and drops use expand/contract over two releases.
+
+## MCP
+
+`setup` registers one user-scope MCP server, `github` (official image, through
+`~/.config/software-factory/mcp-github.sh`, token taken from `gh` at start, never stored in
+Claude's config). It is for interactive questions; the pipeline itself uses `gh` so every
+state change stays scripted. New projects get **no** `.mcp.json`: user scope already covers
+every folder, and a project file would duplicate it and add an approval prompt. Add a project
+`.mcp.json` only for something project-specific (e.g. a database MCP for one service).
 
 ## Not handled
 
-- New microservices: project-template's `/new-microservice` creates them; intake
-  rejects such issues and says so.
-- GitLab: the factory needs GitHub issues, labels and PRs (`gh`).
-- Running the service: nothing is booted against Postgres or the local stack.
+- GitLab, Jira: GitHub issues and PRs only (`gh`).
+- Changes spanning several services in one job: intake builds this service's part and names
+  the rest, to be filed as an issue in the other repo.
+- End-to-end test suites: the development repo has none on purpose.

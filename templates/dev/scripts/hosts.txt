@@ -1,0 +1,6 @@
+database.indir.local
+auth.indir.local
+aws.indir.local
+s3.aws.indir.local
+azure.indir.local
+redis.indir.local

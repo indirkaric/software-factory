@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""Run a job's branch locally against the development stack, for sf-verifier.
+
+Usage:
+  verify <job> up [--arg key=value ...]   start the infra, a fresh database, build and boot the app
+  verify <job> token [admin|manager|user] print an access token from the local Keycloak
+  verify <job> down                       stop the app and drop its database
+
+`up` uses the development repo's docker compose (PROJECTS_DIR/DEV_REPO from
+~/.config/software-factory/config.env, or config.json verify.dev_dir): it
+starts only the infrastructure (db, auth, aws; never stops or wipes anything),
+creates an empty database `sfv_<job>` so Liquibase runs from zero, builds the
+worktree's jar and runs it on a free port with the datasource and issuer
+pointed at localhost. It prints `BASE_URL`, `LOG` and `HEALTH` lines.
+Exit 3 means the environment is missing (docker, the development repo).
+"""
+
+import json
+import os
+import re
+import signal
+import socket
+import subprocess
+import sys
+import time
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+FACTORY = REPO / "factory"
+CONFIG = json.loads((FACTORY / "config.json").read_text())
+VCFG = CONFIG.get("verify", {})
+KEYCLOAK = VCFG.get("keycloak", "http://localhost:8080/realms/indir")
+CLIENT = VCFG.get("client_id", "indir-app")
+USERS = {"admin": "admin", "manager": "manager", "user": "user"}
+PG = VCFG.get("postgres", {"user": "postgres", "password": "postgres", "port": 5432})
+
+
+def die(msg, code=1):
+    print(f"verify: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def job(job_id):
+    path = FACTORY / "jobs" / job_id / "job.json"
+    if not path.exists():
+        die(f"no job {job_id}")
+    j = json.loads(path.read_text())
+    return j, FACTORY / "jobs" / job_id / f"round-{j['round']}"
+
+
+def dev_dir():
+    if VCFG.get("dev_dir"):
+        return Path(os.path.expanduser(VCFG["dev_dir"]))
+    env = {}
+    cfg = Path.home() / ".config/software-factory/config.env"
+    if cfg.exists():
+        for line in cfg.read_text().splitlines():
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                env[k] = v
+    return Path(env.get("PROJECTS_DIR", Path.home() / "Desktop/projects")) / env.get("DEV_REPO", "development")
+
+
+def compose(*args, check=True):
+    d = dev_dir()
+    files = ["-f", "docker-compose.yml"] + (["-f", "docker-compose.override.yml"]
+                                           if (d / "docker-compose.override.yml").exists() else [])
+    res = subprocess.run(["docker", "compose", *files, *args], cwd=d, capture_output=True, text=True)
+    if check and res.returncode != 0:
+        die(f"docker compose {' '.join(args)} failed: {(res.stderr or res.stdout).strip()[-800:]}")
+    return res
+
+
+def db_name(job_id):
+    return "sfv_" + re.sub(r"[^a-z0-9]", "_", job_id.lower())
+
+
+def psql(sql):
+    return compose("exec", "-T", "db", "psql", "-U", PG["user"], "-v", "ON_ERROR_STOP=1", "-c", sql)
+
+
+def free_port():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def up(job_id, extra):
+    j, rd = job(job_id)
+    if subprocess.run(["docker", "info"], capture_output=True).returncode != 0:
+        die("docker isn't running", 3)
+    if not (dev_dir() / "docker-compose.yml").exists():
+        die(f"no development repo at {dev_dir()} (software-factory new development dev)", 3)
+    down(job_id, quiet=True)
+    compose("up", "-d", "--wait", *VCFG.get("infra", ["db", "auth", "aws"]))
+    wt = Path(j["worktree"])
+    # Keycloak stamps iss=http://auth.indir.local:8080/realms/indir (the yaml's issuer); keys
+    # come from localhost, so the app needs no /etc/hosts entry.
+    args = [f"--server.port={(port := free_port())}",
+            f"--spring.security.oauth2.resourceserver.jwt.jwk-set-uri={KEYCLOAK}/protocol/openid-connect/certs"]
+    persistence = (wt / "src/main/resources/liquibase").exists()
+    if persistence:
+        db = db_name(job_id)
+        psql(f'CREATE DATABASE "{db}"')
+        url = f"jdbc:postgresql://localhost:{PG['port']}/{db}"
+        for pool in ("readwrite", "readonly"):
+            args += [f"--database.{pool}.url={url}", f"--database.{pool}.username={PG['user']}",
+                     f"--database.{pool}.password={PG['password']}"]
+    build = subprocess.run(["mvn", "-o", "-q", "-B", "package", "-DskipTests"], cwd=wt, capture_output=True, text=True)
+    if build.returncode != 0:
+        die("mvn package failed:\n" + (build.stdout + build.stderr)[-1500:])
+    jar = next((p for p in sorted((wt / "target").glob("*.jar")) if not p.name.endswith("original")), None)
+    if not jar:
+        die("no jar in target/")
+    log = rd / "verify-app.log"
+    proc = subprocess.Popen(["java", "-jar", str(jar), *args, *[f"--{a}" for a in extra]],
+                            cwd=wt, stdout=log.open("w"), stderr=subprocess.STDOUT, start_new_session=True)
+    (rd / ".verify.json").write_text(json.dumps({"pid": proc.pid, "port": port, "db": persistence}))
+    health = f"http://localhost:{port}/actuator/health"
+    for _ in range(90):
+        if proc.poll() is not None:
+            die(f"the app exited with {proc.returncode}; last lines of {log}:\n" + "\n".join(log.read_text().splitlines()[-40:]))
+        try:
+            with urllib.request.urlopen(health, timeout=2) as r:
+                if json.loads(r.read()).get("status") == "UP":
+                    print(f"BASE_URL: http://localhost:{port}\nLOG: {log}\nHEALTH: UP\nDATABASE: {db_name(job_id) if persistence else 'none'}")
+                    return
+        except OSError:
+            pass
+        time.sleep(2)
+    die(f"the app didn't report UP within 180s; see {log}")
+
+
+def token(user):
+    if user not in USERS:
+        die(f"user is one of {', '.join(USERS)}")
+    data = urllib.parse.urlencode({"grant_type": "password", "client_id": CLIENT,
+                                   "username": user, "password": USERS[user]}).encode()
+    try:
+        with urllib.request.urlopen(f"{KEYCLOAK}/protocol/openid-connect/token", data, timeout=10) as r:
+            print(json.loads(r.read())["access_token"])
+    except OSError as e:
+        die(f"Keycloak refused a token for {user}: {e}")
+
+
+def down(job_id, quiet=False):
+    _, rd = job(job_id)
+    state = rd / ".verify.json"
+    if state.exists():
+        s = json.loads(state.read_text())
+        try:
+            os.killpg(s["pid"], signal.SIGTERM)
+        except OSError:
+            pass
+        state.unlink()
+    if (dev_dir() / "docker-compose.yml").exists():
+        r = compose("ps", "-q", "db", check=False)
+        if r.stdout.strip():
+            psql(f'DROP DATABASE IF EXISTS "{db_name(job_id)}" WITH (FORCE)')
+    if not quiet:
+        print("verify: stopped")
+
+
+def main(argv):
+    if len(argv) >= 2 and argv[1] == "up":
+        rest, extra = argv[2:], []
+        while rest:
+            if rest[0] != "--arg" or len(rest) < 2:
+                die("up takes only --arg key=value pairs")
+            extra.append(rest[1])
+            rest = rest[2:]
+        up(argv[0], extra)
+    elif len(argv) in (2, 3) and argv[1] == "token":
+        token(argv[2] if len(argv) == 3 else "admin")
+    elif len(argv) == 2 and argv[1] == "down":
+        down(argv[0])
+    else:
+        die(__doc__.strip())
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

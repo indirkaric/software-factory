@@ -5,7 +5,12 @@
 Usage:
   gate <job-id>            write round-N/checks.md; exit 0 on PASS, 1 on FAIL
   gate <job-id> --merge    same, as round-N/merge-checks.md (job merge runs it)
-  gate --hook              builder SubagentStop hook: run the checks once, exit 2 on failure
+  gate --hook              builder Stop hook: run the checks once, exit 2 on failure
+
+When the builder's Stop hook already ran checks.sh on the same commit, with a
+clean tree and the same checks.sh and config.json, the gate reuses that run
+instead of building again (never for --merge, which runs after syncing with the
+base branch).
 
 The gate runs the main checkout's factory/checks.sh inside the job's worktree,
 so a branch can't change the checks it is judged by. It also fails when the
@@ -14,6 +19,7 @@ branch modifies or deletes a file matching config.json `protected_paths`
 """
 
 import fnmatch
+import hashlib
 import json
 import subprocess
 import sys
@@ -53,6 +59,31 @@ def protected_changes(worktree):
     return hits
 
 
+def checks_sha():
+    h = hashlib.sha1()
+    for f in (CHECKS, FACTORY / "config.json"):
+        h.update(f.read_bytes())
+    return h.hexdigest()
+
+
+def clean(worktree):
+    return not git(worktree, "status", "--porcelain").strip()
+
+
+HOOK_RUN = ".hook-checks.json"
+
+
+def reused_run(round_dir, worktree, commit):
+    """The builder hook's checks.sh result for exactly this state, or None."""
+    try:
+        run = json.loads((round_dir / HOOK_RUN).read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if run.get("commit") == commit and run.get("checks") == checks_sha() and run.get("clean") and clean(worktree):
+        return run
+    return None
+
+
 def run_checks(worktree):
     start = time.monotonic()
     res = subprocess.run(["bash", str(CHECKS)], cwd=worktree, capture_output=True, text=True)
@@ -67,13 +98,18 @@ def gate(job_id, merge):
     round_dir = FACTORY / "jobs" / job_id / f"round-{job['round']}"
     commit = git(worktree, "rev-parse", "HEAD").strip()
     protected = protected_changes(worktree)
-    code, log, seconds = run_checks(worktree)
+    reused = None if merge else reused_run(round_dir, worktree, commit)
+    if reused:
+        code, log, seconds = reused["code"], reused["log"], reused["seconds"]
+    else:
+        code, log, seconds = run_checks(worktree)
     verdict = "PASS" if code == 0 and not protected else "FAIL"
     name = "merge-checks" if merge else "checks"
     (round_dir / f"{name}.log").write_text(log)
     tail = "\n".join(log.rstrip().splitlines()[-TAIL:])
     summary = [
-        f"checks.sh {'passed' if code == 0 else f'failed with exit {code}'} in {seconds}s",
+        f"checks.sh {'passed' if code == 0 else f'failed with exit {code}'} in {seconds}s"
+        + (" (the builder's run on this exact commit, reused)" if reused else ""),
         f"Protected paths: {'changed: ' + ', '.join(protected) if protected else 'none changed'}",
         f"Commit {commit[:7]}" + (", synced with the latest main before merging" if merge else ""),
     ]
@@ -85,6 +121,7 @@ def gate(job_id, merge):
         + f"\n\n## checks.sh\nExit {code} in {seconds}s. Last {TAIL} lines of {name}.log:\n\n```\n{tail}\n```\n"
     )
     print(f"GATE: {verdict} ({job_id} round {job['round']}, checks.sh exit {code} in {seconds}s"
+          + (", reused the builder's run" if reused else "")
           + (f", protected paths changed: {', '.join(protected)}" if protected else "") + ")")
     sys.exit(0 if verdict == "PASS" else 1)
 
@@ -98,7 +135,14 @@ def hook():
     prompt = content if isinstance(content, str) else " ".join(b.get("text", "") for b in content)
     job_id = prompt.split("Job: ", 1)[1].split(".", 1)[0]
     job = json.loads((FACTORY / "jobs" / job_id / "job.json").read_text())
-    code, log, _ = run_checks(job["worktree"])
+    worktree = job["worktree"]
+    commit = git(worktree, "rev-parse", "HEAD").strip()
+    code, log, seconds = run_checks(worktree)
+    if job["round"] >= 1:
+        # the gate reuses this when nothing changes before it runs
+        (FACTORY / "jobs" / job_id / f"round-{job['round']}" / HOOK_RUN).write_text(json.dumps({
+            "commit": commit, "clean": clean(worktree), "checks": checks_sha(),
+            "code": code, "log": log, "seconds": seconds}))
     if code != 0:
         tail = "\n".join(log.rstrip().splitlines()[-40:])
         print(f"factory/checks.sh fails in your worktree (exit {code}). The gate will reject this "

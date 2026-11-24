@@ -1,0 +1,98 @@
+{
+  "realm": "indir",
+  "enabled": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 3600,
+  "registrationAllowed": false,
+  "roles": {
+    "realm": [
+      {
+        "name": "ADMIN",
+        "description": "Everything"
+      },
+      {
+        "name": "MANAGER",
+        "description": "Manage the domain data"
+      },
+      {
+        "name": "USER",
+        "description": "Use the application"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "indir-app",
+      "name": "Local apps and scripts",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "*"
+      ],
+      "webOrigins": [
+        "*"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@indir.local",
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "Indir",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ADMIN",
+        "MANAGER",
+        "USER"
+      ]
+    },
+    {
+      "username": "manager",
+      "enabled": true,
+      "email": "manager@indir.local",
+      "emailVerified": true,
+      "firstName": "Manager",
+      "lastName": "Indir",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "manager",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "MANAGER",
+        "USER"
+      ]
+    },
+    {
+      "username": "user",
+      "enabled": true,
+      "email": "user@indir.local",
+      "emailVerified": true,
+      "firstName": "User",
+      "lastName": "Indir",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "user",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "USER"
+      ]
+    }
+  ]
+}

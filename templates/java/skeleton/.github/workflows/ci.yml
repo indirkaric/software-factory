@@ -1,0 +1,59 @@
+name: ci
+
+# Unit tests, JaCoCo coverage and checkstyle on every push and pull request.
+# The software factory waits for this workflow before it merges a PR.
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - name: Unit tests, coverage, checkstyle
+        run: mvn -B -ntp verify
+      - name: Test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports
+          if-no-files-found: ignore
+# @persistence:start
+
+  migrations:
+    # Every Liquibase changeset must apply, roll back and apply again on an empty database.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: "{{db}}"
+          POSTGRES_USER: "{{db}}_app"
+          POSTGRES_PASSWORD: "{{db}}_app"
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U {{db}}_app" --health-interval 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - name: Liquibase update, rollback, update
+        run: mvn -B -ntp liquibase:updateTestingRollback -Dliquibase.url=jdbc:postgresql://localhost:5432/{{db}}
+# @persistence:end

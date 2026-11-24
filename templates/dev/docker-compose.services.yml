@@ -1,0 +1,4 @@
+# Java services, built from their own repos next to this one (../<name>).
+# Added by scripts/add-service.sh (software-factory new <name> java runs it).
+# Start them with `dev-run <name>` or `dev-up-all`.
+services: {}

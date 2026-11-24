@@ -1,0 +1,12 @@
+# Ports on the host, so services started from an IDE reach the infrastructure.
+services:
+  db:
+    ports: ["5432:5432"]
+  auth:
+    ports: ["8080:8080"]
+  aws:
+    ports: ["4566:4566"]
+  azurite:
+    ports: ["10000:10000", "10001:10001", "10002:10002"]
+  redis:
+    ports: ["6379:6379"]

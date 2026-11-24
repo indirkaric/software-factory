@@ -1,0 +1,103 @@
+# Local infrastructure for every service: Postgres, Keycloak, LocalStack (AWS).
+# Optional: Azurite (profile azure), Redis (profile redis). Services live in
+# docker-compose.services.yml (scripts/add-service.sh adds them). `.env` sets
+# COMPOSE_FILE, so a plain `docker compose` in this folder uses all three files.
+name: indir
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - ./docker-mounts/postgres/init-scripts:/docker-entrypoint-initdb.d:ro
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      indir:
+        aliases: [database.indir.local]
+
+  auth:
+    image: quay.io/keycloak/keycloak:24.0.5
+    command: start-dev --import-realm
+    restart: unless-stopped
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://database.indir.local:5432/keycloak
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: postgres
+      # Tokens always carry iss=http://auth.indir.local:8080/realms/indir, whether they
+      # are fetched from the host (localhost:8080) or from a container.
+      KC_HOSTNAME_URL: http://auth.indir.local:8080
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+    volumes:
+      - ./docker-mounts/keycloak/indir-realm.json:/opt/keycloak/data/import/indir-realm.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /realms/indir HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 20s
+    networks:
+      indir:
+        aliases: [auth.indir.local]
+
+  aws:
+    image: localstack/localstack:3.8
+    restart: unless-stopped
+    environment:
+      SERVICES: s3,sqs,ses
+      AWS_DEFAULT_REGION: eu-west-1
+    volumes:
+      - ./docker-mounts/localstack:/etc/localstack/init/ready.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/init/ready | grep -q '\"completed\": true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+    networks:
+      indir:
+        aliases: [aws.indir.local, s3.aws.indir.local]
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.33.0
+    profiles: [azure]
+    restart: unless-stopped
+    command: azurite --loose --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0
+    networks:
+      indir:
+        aliases: [azure.indir.local]
+
+  redis:
+    image: redis:7-alpine
+    profiles: [redis]
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+    networks:
+      indir:
+        aliases: [redis.indir.local]
+
+volumes:
+  pg-data:
+  redis-data:
+
+networks:
+  indir:
+    name: indir

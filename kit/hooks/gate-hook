@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+"""factory-builder's Stop hook, installed once per machine by `software-factory setup`.
+
+Finds the service from the builder's first prompt (`Job folder: <repo>/factory/
+jobs/<id>/`) and runs that service's own `factory/bin/gate --hook`. It works
+whatever folder Claude Code was opened in: a service, or a workspace of
+services, where $CLAUDE_PROJECT_DIR is not the service.
+"""
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+raw = sys.stdin.read()
+try:
+    event = json.loads(raw)
+    with open(Path(event["agent_transcript_path"]).expanduser()) as f:
+        content = json.loads(f.readline())["message"]["content"]
+except (OSError, KeyError, ValueError):
+    sys.exit(0)  # not a factory builder transcript: nothing to check
+prompt = content if isinstance(content, str) else " ".join(
+    b.get("text", "") for b in content if isinstance(b, dict))
+m = re.search(r"Job folder: (\S+?)/factory/jobs/[^/\s]+/", prompt)
+gate = Path(m.group(1)) / "factory" / "bin" / "gate" if m else None
+if not gate or not gate.exists():
+    sys.exit(0)
+res = subprocess.run([str(gate), "--hook"], input=raw, capture_output=True, text=True)
+sys.stdout.write(res.stdout)
+sys.stderr.write(res.stderr)
+sys.exit(res.returncode)

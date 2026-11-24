@@ -260,9 +260,9 @@
 <div id="banner"></div>
 <main class="board" id="board"></main>
 <footer>
-  <span>/factory run</span>
-  <span>/factory run &lt;n&gt;</span>
-  <span>/factory &lt;anything&gt;</span>
+  <span>/software-factory run</span>
+  <span>/software-factory run &lt;n&gt;</span>
+  <span>/software-factory &lt;anything&gt;</span>
   <span id="totals"></span>
 </footer>
 
@@ -285,16 +285,17 @@
 <script>
 const POLL_MS = 2000
 const COLUMNS = [
-  { label: 'Intake', who: 'intake · fable', stages: ['intake', 'needs-info'] },
+  { label: 'Intake', who: 'intake · opus', stages: ['intake', 'needs-info'] },
   { label: 'Spec', who: 'spec-writer · opus', stages: ['spec'] },
   { label: 'Build', who: 'builder · gate', stages: ['build', 'gate'] },
   { label: 'Review', who: 'routed reviewers', stages: ['review'] },
+  { label: 'Verify', who: 'verifier · local stack', stages: ['verify'] },
   { label: 'Approve', who: 'approver · merge', stages: ['approve', 'merging'] },
   { label: 'Needs human', who: 'you', stages: ['needs-human'], cls: 'human' },
   { label: 'Done', who: 'merged · rejected', stages: ['merged', 'rejected'], cls: 'merged-col' },
 ]
 const STAGES = new Set(COLUMNS.flatMap((c) => c.stages))
-const LIVE = new Set(['intake', 'spec', 'build', 'gate', 'review', 'approve', 'merging'])
+const LIVE = new Set(['intake', 'spec', 'build', 'gate', 'review', 'verify', 'approve', 'merging'])
 const SHORT = { code: 'code', api: 'api', db: 'db', integration: 'int', security: 'sec' }
 
 const $ = (id) => document.getElementById(id)
@@ -400,7 +401,7 @@ function card(job, rounds) {
       <div class="links">${links(job)}</div>
       ${rounds.length ? `<div class="rounds">${rounds.join('')}</div>` : ''}
       <div class="meta">${meta}</div>
-      ${human ? `<div class="hint">${job.pr ? `merge PR #${job.pr} to approve<br>` : ''}or give feedback: /factory &lt;anything&gt;</div>` : ''}
+      ${human ? `<div class="hint">${job.pr ? `merge PR #${job.pr} to approve<br>` : ''}or give feedback: /software-factory &lt;anything&gt;</div>` : ''}
     </article>`
 }
 

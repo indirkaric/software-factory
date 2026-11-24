@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# software-factory - a Claude Code software factory for Java backends on GitHub.
+#
+#   software-factory setup                 once per machine: GitHub token, Claude Code skill + agents, MCP
+#   software-factory update                pull the newest factory and reinstall it
+#   software-factory new <name> java [proxy] [--domain X] [--calls a,b] [--port N] [--public] [--offline]
+#                                          new Spring Boot service (proxy = no database) on GitHub
+#   software-factory new <name> dev [--public] [--offline]
+#                                          new development repo (compose: Postgres, Keycloak, LocalStack)
+#   software-factory doctor [dir]          check the tools, the token's GitHub permissions, a repo
+#   software-factory attach [dir]          (run by /software-factory) put factory/ into a service repo
+#
+# Day to day you only use Claude Code, opened in a service folder:
+#   /software-factory run           every open GitHub issue labeled `factory` → one PR each
+#   /software-factory run 12        issue #12 now
+#   /software-factory new invoice java
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+CONF="$HOME/.config/software-factory"
+CFG="$CONF/config.env"
+CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+
+usage() { sed -n '2,17p' "$HERE/software-factory" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+fail() { echo "software-factory: $*" >&2; exit 1; }
+need_setup() { [[ -f "$CFG" ]] || fail "run '$HERE/software-factory setup' first"; }
+cfg() { [[ -f "$CFG" ]] && sed -n "s/^$1=//p" "$CFG" | tail -1 || true; }
+projects_dir() { local d; d="$(cfg PROJECTS_DIR)"; echo "${d:-$HOME/Desktop/projects}"; }
+
+# version of the runtime part copied into services: changes when kit/factory changes
+stamp() {
+  python3 - "$HERE/kit/factory" <<'PY'
+import hashlib, pathlib, sys
+h = hashlib.sha1()
+root = pathlib.Path(sys.argv[1])
+for f in sorted(p for p in root.rglob("*") if p.is_file() and "__pycache__" not in p.parts):
+    h.update(str(f.relative_to(root)).encode()); h.update(f.read_bytes())
+print(h.hexdigest()[:12])
+PY
+}
+
+install_global() {
+  mkdir -p "$CLAUDE_DIR/skills" "$CLAUDE_DIR/agents" "$CONF/bin" "$HOME/.local/bin"
+  for s in software-factory software-factory-run; do
+    rm -rf "$CLAUDE_DIR/skills/$s"
+    cp -R "$HERE/kit/.claude/skills/$s" "$CLAUDE_DIR/skills/$s"
+  done
+  rm -f "$CLAUDE_DIR"/agents/sf-*.md
+  cp "$HERE"/kit/.claude/agents/sf-*.md "$CLAUDE_DIR/agents/"
+  ln -sfn "$HERE/templates" "$CONF/templates"
+  cp "$HERE/kit/hooks/gate-hook" "$CONF/bin/gate-hook" && chmod +x "$CONF/bin/gate-hook"
+  ln -sfn "$HERE/software-factory" "$HOME/.local/bin/software-factory"
+  echo "==> /software-factory, /software-factory-run and $(ls "$HERE"/kit/.claude/agents/sf-*.md | wc -l) sf-* agents installed in $CLAUDE_DIR"
+  echo "==> templates: $CONF/templates -> $HERE/templates; command: ~/.local/bin/software-factory"
+  case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "    add ~/.local/bin to PATH: echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc" ;; esac
+}
+
+attach() {  # attach <repo root>
+  local dir="$1" want
+  want="$(stamp)"
+  if [[ ! -f "$dir/factory/.stamp" || "$(cat "$dir/factory/.stamp")" != "$want" ]]; then
+    "$HERE/lib/attach.sh" "$dir" "$want"
+  fi
+  if [[ -f "$dir/CLAUDE.md" ]]; then echo "CLAUDE.md: ok"; else echo "CLAUDE.md: missing"; fi
+}
+
+cmd="${1:-help}"; (( $# )) && shift
+case "$cmd" in
+  setup)
+    "$HERE/setup.sh" "$@"
+    install_global
+    echo
+    echo "Done. Restart Claude Code, open it in a service folder and run /software-factory run" ;;
+
+  update)
+    if git -C "$HERE" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
+      echo "==> pulling the factory ($HERE)"
+      git -C "$HERE" pull --ff-only || fail "could not fast-forward $HERE; resolve it there first"
+    fi
+    exec "$HERE/software-factory" install-global ;;
+
+  install-global)
+    install_global
+    echo "Services pick up the new runtime on their next /software-factory (restart open Claude Code sessions)" ;;
+
+  attach)
+    dir="$(cd "${1:-.}" && pwd)"
+    root="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" || fail "$dir is not a git repository; open Claude Code in a service repo"
+    attach "$root" ;;
+
+  new)
+    need_setup
+    [[ $# -ge 2 && "$1" != -* ]] || fail "usage: software-factory new <name> java [proxy] | dev  [options]"
+    name="$1"; kind="$2"; shift 2
+    if [[ "$kind" == java && "${1:-}" == proxy ]]; then kind=proxy; shift; fi
+    [[ "$kind" == java || "$kind" == proxy || "$kind" == dev ]] || fail "kind is java, java proxy or dev, not '$kind'"
+    exec "$HERE/new-service.sh" --name "$name" --kind "$kind" --dir "$(projects_dir)" "$@" ;;
+
+  doctor)
+    exec "$HERE/lib/doctor.sh" "${1:-.}" ;;
+
+  help|-h|--help) usage 0 ;;
+  *) echo "unknown command: $cmd" >&2; usage 1 ;;
+esac

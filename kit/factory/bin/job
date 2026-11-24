@@ -8,9 +8,11 @@ it and refuses anything else. GitHub side effects that belong to a transition
 orchestrator never improvises them.
 
 Usage:
-  job queue                      what /factory run should do with each labeled issue
-  job create <issue>             new job for an open `factory` issue; prints the job id
-  job advance <job> <stage>      move a job to <stage>, or refuse
+  job queue [<owner>]            what /software-factory run should do with each labeled issue;
+                                 jobs another session holds show as `busy`
+  job create <issue>             new job for an open issue (labels it `factory`); prints the job id
+  job claim <job> <owner>        this session works on the job now (a lease; refused while another holds it)
+  job advance <job> <stage>      move a job to <stage>, or refuse (build → gate opens the draft PR)
   job merge <job>                APPROVE → sync with the base branch, gate, merge the PR
   job feedback <job>             needs-human → build, with your feedback (stdin) as feedback-<k>.md
   job reject <job>               needs-info or needs-human → rejected, with your reason (stdin) as rejection.md
@@ -19,6 +21,11 @@ Usage:
   job summary [<job>...]         table of jobs: issue, stage, PR, cost, time
 
 <job> is a job id (004-dark-mode) or an issue number (12).
+
+Several Claude Code sessions can run /software-factory at once in the same
+repo: every job has its own worktree and branch, `create` is serialized, and a
+session claims a job before working on it, so two sessions never drive the
+same job. A claim expires after config.json `lease_minutes`.
 """
 
 import fcntl
@@ -45,7 +52,8 @@ TRANSITIONS = {
     "spec": {"build"},
     "build": {"gate", "needs-human"},
     "gate": {"review", "build", "needs-human"},
-    "review": {"approve", "build", "needs-human"},
+    "review": {"verify", "build", "needs-human"},
+    "verify": {"approve", "build", "needs-human"},
     "approve": {"merging", "needs-human"},
     "merging": {"needs-human"},
     "needs-human": {"build", "rejected"},
@@ -55,6 +63,7 @@ TERMINAL = {"merged", "rejected"}
 # whether the factory merged it or a person did mid-round.
 WAITING = {"needs-info", "needs-human"}
 CONCURRENCY = CONFIG["concurrency"]
+LEASE_MINUTES = CONFIG.get("lease_minutes", 120)
 
 
 class Refused(Exception):
@@ -139,6 +148,16 @@ def require_slot(job_id):
     busy = [j["id"] for j in running(all_jobs()) if j["id"] != job_id]
     require(len(busy) < CONCURRENCY,
             f"concurrency {CONCURRENCY} reached; running: {', '.join(busy)}")
+
+
+def claim_holder(job, owner=None):
+    """The other session holding a fresh claim on this job, or None."""
+    c = job.get("claim")
+    if not c or job["stage"] in TERMINAL | WAITING or c["owner"] == owner:
+        return None
+    at = datetime.fromisoformat(c["at"].replace("Z", "+00:00"))
+    fresh = (datetime.now(timezone.utc) - at).total_seconds() < LEASE_MINUTES * 60
+    return c["owner"] if fresh else None
 
 
 def resolve(arg):
@@ -322,7 +341,9 @@ def sync(job):
         rd = round_dir(job)
         gate = header(rd / "checks.md").get("GATE") if (rd / "checks.md").exists() else None
         job["gate"] = gate
-        if job["agents"] and job["stage"] in {"review", "approve", "merging", "merged", "needs-human"}:
+        vf = rd / "verify.md"
+        job["verify"] = re.sub(r"^VERIFY:\s*", "", first_line(vf)) if vf.exists() else None
+        if job["agents"] and job["stage"] in {"review", "verify", "approve", "merging", "merged", "needs-human"}:
             job["reviews"] = {}
             for r in reviewers(job):
                 line = first_line(rd / f"review-{r}.md")
@@ -434,6 +455,13 @@ def advance(job, stage):
         require(head == remote, f"{job['branch']} isn't pushed: local {head[:7]}, origin {remote[:7] or 'missing'}")
         if not job["pr"]:
             prs = gh_json("pr", "list", "--head", job["branch"], "--state", "open", "--json", "number,url")
+            if not prs:
+                summary = section(d / "build.md", "Summary") or ""
+                body = (f"{summary}\n\nCloses #{job['issue']}\n\n"
+                        f"Built by the software factory, job `{job['id']}`.")
+                gh("pr", "create", "--draft", "--base", BASE, "--head", job["branch"],
+                   "--title", job["title"], "--body", body)
+                prs = gh_json("pr", "list", "--head", job["branch"], "--state", "open", "--json", "number,url")
             require(len(prs) == 1, f"expected one open PR from {job['branch']}, found {len(prs)}")
             job["pr"], job["pr_url"] = prs[0]["number"], prs[0]["url"]
 
@@ -465,7 +493,7 @@ def advance(job, stage):
     elif old == "review":
         check_reviews_done(job)
         changes = [r for r, v in job["reviews"].items() if v == "CHANGES"]
-        if stage == "approve":
+        if stage == "verify":
             require(not changes, f"reviews want CHANGES: {', '.join(changes)}")
         else:
             require(changes, "every review passed")
@@ -477,6 +505,24 @@ def advance(job, stage):
                               f"from: {', '.join(changes)}.")
             else:
                 next_round(job)
+
+    elif old == "verify":
+        vf = round_dir(job) / "verify.md"
+        require(vf.exists(), f"sf-verifier hasn't written round-{job['round']}/verify.md")
+        h = header(vf)
+        verdict = re.sub(r"^VERIFY:\s*", "", first_line(vf) or "")
+        require(h.get("COMMIT") == git(job, "rev-parse", "HEAD").stdout.strip(),
+                "verify.md was written for another commit; verify again")
+        if stage == "approve":
+            require(verdict == "PASS", f"verify.md says VERIFY: {verdict}, not PASS")
+        elif stage == "build":
+            require(verdict == "FAIL", f"verify.md says VERIFY: {verdict}, not FAIL")
+            require(job["round"] < job["round_limit"], f"round {job['round']} of {job['round_limit']}: go to needs-human")
+            next_round(job)
+        else:
+            require(verdict in {"FAIL", "SKIP"}, f"verify.md says VERIFY: {verdict}")
+            escalate(job, f"The local check {'could not run' if verdict == 'SKIP' else 'failed in the last round'}. "
+                          f"See round-{job['round']}/verify.md." + ("\n\n" + (section(vf, "Why") or "") if verdict == "SKIP" else ""))
 
     elif old == "approve":
         want = "APPROVE" if stage == "merging" else "ESCALATE"
@@ -519,6 +565,9 @@ def slugify(title):
 
 
 def cmd_create(number):
+    JOBS.mkdir(parents=True, exist_ok=True)
+    lock = open(JOBS / ".create.lock", "w")
+    fcntl.flock(lock, fcntl.LOCK_EX)  # two sessions never take the same id or issue
     existing = [j for j in all_jobs() if j["issue"] == int(number)]
     if existing:
         die(f"issue #{number} already has job {existing[0]['id']} ({existing[0]['stage']})")
@@ -530,8 +579,8 @@ def cmd_create(number):
     if issue["state"] != "OPEN":
         die(f"issue #{number} is {issue['state'].lower()}")
     if LABELS["queue"] not in {l["name"] for l in issue["labels"]}:
-        die(f"issue #{number} isn't labeled {LABELS['queue']}")
-    JOBS.mkdir(parents=True, exist_ok=True)
+        # The operator named this issue explicitly (`/software-factory run <n>`): queue it.
+        label("issue", number, add=LABELS["queue"])
     numbers = [int(p.name.split("-")[0]) for p in JOBS.iterdir() if p.name[:3].isdigit()]
     job_id = f"{max(numbers, default=0) + 1:03d}-{slugify(issue['title'])}"
     job_dir(job_id).mkdir()
@@ -542,14 +591,14 @@ def cmd_create(number):
         "worktree": str(REPO / ".worktrees" / job_id),
         "stage": "intake", "round": 0, "round_limit": CONFIG["max_rounds"],
         "intake": None, "agents": None, "gate": None, "reviews": {},
-        "cost_usd": 0.0, "started": now(), "ended": None,
+        "cost_usd": 0.0, "started": now(), "ended": None, "claim": None,
     }
     write_issue_md(job)
     save(job)
     print(job_id)
 
 
-def cmd_queue():
+def cmd_queue(owner=None):
     """Rows in the order to start them. `resume` and `new` rows fit in the
     concurrency slots; the rest show as `hold` until a running job finishes."""
     jobs = {j["issue"]: j for j in all_jobs()}
@@ -578,6 +627,8 @@ def cmd_queue():
             other_rows.append(("skip", n, j["id"], j["stage"], f"rejected; delete factory/jobs/{j['id']} to retry"))
         elif j["stage"] == "merged":
             other_rows.append(("skip", n, j["id"], j["stage"], "merged"))
+        elif claim_holder(j, owner):
+            other_rows.append(("busy", n, j["id"], j["stage"], "another session is working on it"))
         else:
             running_rows.append(("resume", n, j["id"], j["stage"], f"round {j['round']}"))
     for n, j in sorted(jobs.items()):
@@ -625,6 +676,15 @@ def cmd_merge(job):
         git(job, "push", "origin", job["branch"])
         if gh_json("pr", "view", str(job["pr"]), "--json", "isDraft")["isDraft"]:
             gh("pr", "ready", str(job["pr"]))
+    except Refused as e:
+        return fail(f"Pushing or marking the PR ready failed:\n\n```\n{e}\n```")
+    ci = wait_for_ci(job)
+    if ci:
+        return fail(ci)
+    if not CONFIG.get("auto_merge", True):
+        print(f"{job['id']}: PR #{job['pr']} is approved and green; auto_merge is off, merge it on GitHub")
+        return
+    try:
         gh("pr", "merge", str(job["pr"]), f"--{CONFIG['merge_method']}")
     except Refused as e:
         return fail(f"The merge failed:\n\n```\n{e}\n```")
@@ -632,6 +692,45 @@ def cmd_merge(job):
     run(["git", "push", "origin", "--delete", job["branch"]], check=False)
     save(advance(sync(job), "merged"))
     print(f"{job['id']}: merged PR #{job['pr']}")
+
+
+def wait_for_ci(job):
+    """Wait for GitHub Actions on the PR's head commit. None when green (or no CI), else why not.
+
+    The local gate already passed on this commit; CI is the second opinion that
+    runs on GitHub's machines. A token that can't read Actions doesn't block the
+    merge: it warns and relies on the gate.
+    """
+    import time
+    sha = git(job, "rev-parse", "HEAD").stdout.strip()
+    has_workflows = any((Path(job["worktree"]) / ".github" / "workflows").glob("*.y*ml"))
+    wait = CONFIG.get("ci_wait_minutes", 30)
+    deadline = time.monotonic() + wait * 60
+    appeared_by = time.monotonic() + 180
+    while True:
+        res = run(["gh", "api", f"repos/{{owner}}/{{repo}}/actions/runs?head_sha={sha}&per_page=50"], check=False)
+        if res.returncode != 0:
+            print(f"job: can't read GitHub Actions ({(res.stderr or res.stdout).strip()[:120]}); "
+                  "merging on the local gate alone", file=sys.stderr)
+            return None
+        runs = json.loads(res.stdout).get("workflow_runs", [])
+        if not runs:
+            if not has_workflows or time.monotonic() > appeared_by:
+                return None
+        else:
+            latest = {}
+            for r in sorted(runs, key=lambda r: r["run_number"]):
+                latest[r["name"]] = r  # a re-run replaces the earlier attempt
+            failed = [r for r in latest.values()
+                      if r["status"] == "completed" and r["conclusion"] not in ("success", "skipped", "neutral")]
+            if failed:
+                links = "\n".join(f"- {r['name']}: {r['conclusion']} {r['html_url']}" for r in failed)
+                return f"GitHub Actions failed on PR #{job['pr']}:\n\n{links}"
+            if all(r["status"] == "completed" for r in latest.values()):
+                return None
+        if time.monotonic() > deadline:
+            return f"GitHub Actions didn't finish within {wait} minutes on PR #{job['pr']}."
+        time.sleep(20)
 
 
 def cmd_feedback(job, text):
@@ -689,8 +788,16 @@ def main(argv):
         return
     cmd, args = argv[0], argv[1:]
     try:
-        if cmd == "queue" and not args:
-            cmd_queue()
+        if cmd == "queue" and len(args) <= 1:
+            cmd_queue(args[0] if args else None)
+        elif cmd == "claim" and len(args) == 2:
+            job = resolve(args[0])
+            holder = claim_holder(job, args[1])
+            if holder:
+                die(f"{job['id']} is being worked on by session {holder}; leave it to that session")
+            job["claim"] = {"owner": args[1], "at": now()}
+            save(job)
+            print(f"{job['id']}: claimed ({job['stage']})")
         elif cmd == "create" and len(args) == 1 and args[0].isdigit():
             cmd_create(args[0])
         elif cmd == "advance" and len(args) == 2:
