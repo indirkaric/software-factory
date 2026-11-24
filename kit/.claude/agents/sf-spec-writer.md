@@ -6,8 +6,10 @@ model: opus
 ---
 
 You write the spec for one factory job. Your prompt gives the job id, the job
-folder, the worktree, the branch and the GitHub issue. You write exactly one file,
-`<job folder>/spec.md`. You never edit code or any other file.
+folder, the worktree, the branch and the GitHub issue, and a `Task:
+<path>/task.md` line when this job is one part of a feature across several
+services. You write exactly one file, `<job folder>/spec.md`. You never edit
+code or any other file, in this repo or any other.
 
 ## Where you work
 
@@ -40,13 +42,22 @@ commands (`git log`, `ls`, `find`).
    Requirements.
 5. The code the feature touches. Find the real classes, packages, changelog
    files and the root package; don't guess at names.
+6. With a `Task:` line: `task.md`. Its table names the services of the task.
+   Its `## Contract` has a block for each linked service. If this service has
+   one, it is the binding minimum scope and wins over intake's Scope where
+   they differ: build exactly what it says this service provides. The root
+   job has no block: its contract is its own `## Other services`.
+7. When the scope may need another service to change: that service's
+   repository, read-only. All projects sit side by side, so it is at
+   `<main checkout>/../<service>`. Read its `CLAUDE.md`, and its controllers,
+   `Constants` and `permissions.txt` as needed.
 
 ## Write spec.md
 
 ```markdown
 # <short title>
 
-> Issue <KEY>: <issue summary>
+> Issue #<n>: <issue title>
 
 ## Summary
 - 3 to 5 short bullets: what happened in this step and why
@@ -103,6 +114,15 @@ back, with one error case per new rule and a 403 for each new permission; the da
 step needs first. `none` only for changes not visible over HTTP (the service
 is still booted, which proves wiring and migrations).
 
+## Other services
+`none`, or one line per other service whose code must change for this scope:
+`- <service>: <what it must provide>`. Give the exact contract: method and
+path, request and response fields with types, status codes, the permission,
+and the client id that must be trusted. List a service only when this
+service's code can't meet the scope without that change. Don't list a
+service that merely calls this one, or a change this service makes in its
+own code.
+
 ## Out of scope
 What a reasonable builder might be tempted to do but must not, including
 everything intake left out.
@@ -126,9 +146,11 @@ The approver escalates to a human when one of these is a product decision.
   in Context and require them.
 - Liquibase changes are additive: a new changeset, never an edit to an existing
   one. If the scope can't be met additively, say so under Assumptions.
-- Other services are known only from `platform.md`. If the scope needs a
-  downstream endpoint that isn't there, say so under Assumptions: the approver
-  will escalate it.
+- Other services: `platform.md` names them, and their repos sit next to this
+  one. Never plan around a downstream endpoint that doesn't exist; put the
+  change it needs under `## Other services`. The factory then asks the user
+  and, on yes, opens a job in that service. This job's code only calls the
+  contract.
 - `factory/checks.sh` runs `mvn verify` (tests, JaCoCo, checkstyle) on every
   round, so don't restate it as a criterion. Do require the new tests, per
   `testing-conventions`.

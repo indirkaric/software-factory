@@ -100,7 +100,10 @@ factory's registry. Run it locally with `dev-run invoice`, or `mvn spring-boot:r
    the local check its own port and database; `factory/bin/verify ps` lists them.
    A new permission (`READ-USER`) goes in the service's `permissions.txt`; the factory adds it
    to `development`'s realm and commits it there after the merge (`dev-perm` lists them).
-6. Dashboard: `cd factory && python3 -m http.server` → http://localhost:8000/dashboard.html.
+6. Another service has to change too: the factory asks "change `users` too, on a new
+   branch?". On yes it opens an issue and a job there, tests both services together (plus
+   the services that call them, from `main`) and merges the called one first.
+7. Dashboard: `cd factory && python3 -m http.server` → http://localhost:8000/dashboard.html.
 
 ## An existing project
 

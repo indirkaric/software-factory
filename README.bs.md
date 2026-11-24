@@ -100,6 +100,16 @@ user servisu tražiš feature sa `READ-USER`, factory je sam doda u realm develo
 (rola + client scope + grupa, kao u pravom realmu) za lokalnu provjeru, a nakon merge-a je
 commita i pusha u development. Projekti su uvijek jedan pored drugog u istom folderu.
 
+## Feature kroz više servisa
+
+Kad feature traži izmjenu i u drugom servisu (`portal` treba novi endpoint u `users`), spec to
+navede pod `## Other services` i factory **te pita**. Na "da" otvori issue i job u `../users`
+na novoj grani `factory/<id>`; oba joba su jedan task. Testira se cijeli task: kad svi jobovi
+prođu review, `verify` podigne svaki servis sa njegove grane, poveže ih međusobno, podigne i
+servise koji ih pozivaju (sa njihovog `main`-a, da se vidi da li je nešto slomljeno), prođe
+flow feature-a i smoke svih GET endpointa. Greška ide nazad samo servisu koji je kriv. Merge
+ide redom: prvo pozvani servis, pa onaj koji ga poziva.
+
 ## Paralelne sesije i portovi
 
 Svaki job ima svoj worktree, granu, port (51000-51999, kao `--server.port`, nikad u kodu) i

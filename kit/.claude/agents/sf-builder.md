@@ -45,19 +45,25 @@ other jobs.
    Where the service has no such skill, read it from
    `~/.config/software-factory/templates/java/.claude/skills/<name>/SKILL.md` (the factory's own).
    The service's CLAUDE.md wins where they disagree.
-4. `~/.config/software-factory/templates/java/skeleton/`: the factory's skeleton, the one reference for
+4. With a `Task: <path>/task.md` line in the prompt (this job is one service's
+   part of a feature across several services): `task.md`, the one file outside
+   this repo you read. Its `## Contract` block for this service (the root job
+   has none; it has its spec's `## Other services`) is binding: provide exactly
+   what it says, and call the other services exactly as it says. A message
+   that names a `Task:` path mid-build means the same. Build only this repo.
+5. `~/.config/software-factory/templates/java/skeleton/`: the factory's skeleton, the one reference for
    infrastructure code (`BaseClient`, exceptions, security filters, audit
    entities, config). No other service is a reference; `ROOT` stands for the root package and
    `{{...}}` for generated names. When you need a piece of infrastructure the
    service lacks, copy its shape from there instead of inventing one. It is
    read-only: never edit it.
-5. When a round's gate failed, `round-<N>/checks.md` and `checks.log` in the
+6. When a round's gate failed, `round-<N>/checks.md` and `checks.log` in the
    job folder: the failing output of `factory/checks.sh`. When the local check
    failed, `round-<N>/verify.md`: the calls, what came back and the log lines.
-6. When reviews asked for changes, every `review-*.md` in the round folder the
+7. When reviews asked for changes, every `review-*.md` in the round folder the
    message names. Address each finding in a `VERDICT: CHANGES` file. Notes in
    `VERDICT: PASS` files are optional.
-7. When the prompt names a `feedback-*.md` file, read it: the user's feedback
+8. When the prompt names a `feedback-*.md` file, read it: the user's feedback
    after the job escalated. Read `decision.md` and every round folder too, so
    you know the history. The feedback comes before the reviews and the spec
    where they disagree.
@@ -80,11 +86,12 @@ other jobs.
   groups the spec names (`READ-INVOICE  Manager,Employee`). Never edit the
   development repo's realm: the factory adds `permissions.txt` to it, locally
   for the check and in the development repo after the merge.
-- Other services only through `platform.md` and `BaseClient`; never read a
-  sibling repo.
+- Other services only through `platform.md`, `task.md`'s contract and
+  `BaseClient`; never read a sibling repo (task.md excepted) and never edit one.
 - Every feature must work when the service runs: the factory boots your branch
-  against the local Postgres/Keycloak/LocalStack and calls the endpoints in the
-  spec's `## Local check` after the reviews. Configuration the app needs at
+  (with the task's other services and their callers) against the local
+  Postgres/Keycloak/LocalStack and calls the endpoints in the spec's
+  `## Local check` after the reviews. Configuration the app needs at
   startup goes in `application.yaml` with a working local default.
 - Markdown files you write or change stay under 200 lines.
 - Make the simplest change that fully meets the spec. No fallbacks, hidden
@@ -167,8 +174,14 @@ detail goes in the sections below it.
 
 Write `STATUS: BLOCKED` on the first line instead when you can't meet the spec:
 it contradicts itself or CLAUDE.md, it needs a decision only a human can make
-(a downstream endpoint missing from `platform.md`, a non-additive migration),
-or something in the environment fails. Explain exactly what blocks you under a
-`## Blocked` heading. Don't paper over a failure to reach READY.
+(a non-additive migration), or something in the environment fails. Explain
+exactly what blocks you under a `## Blocked` heading. Don't paper over a
+failure to reach READY.
+
+When the block is another service whose code must change (a downstream
+endpoint, field or trusted client id that neither exists nor is in
+`task.md`'s contract), add one line per service under `## Blocked`:
+`NEEDS: <service>: <what it must provide, as an exact contract>`. You never
+edit another repository; the factory asks the user and opens a job there.
 
 When you're done, reply with one line: the first line of build.md.

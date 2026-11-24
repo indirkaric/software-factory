@@ -35,12 +35,13 @@ Pipeline, state machine, gate and routing come from zazencodes' software-factory
 
 ## The verify stage
 
-`factory/bin/verify <job> up` starts the development repo's `db auth aws` (never stops or wipes
-anything), creates an empty database `sfv_<job>`, builds the worktree's jar and runs it on a
-free port with the datasource pointed at that database and the JWT keys at the local Keycloak.
-`sf-verifier` (Sonnet) calls the spec's `## Local check` as `admin`/`manager`/`user`, writes
-`round-N/verify.md` (`VERIFY: PASS | FAIL | SKIP`, tied to the commit), and always runs `down`,
-which stops the app and drops the database. FAIL goes back to the builder; SKIP (no Docker, no
+`factory/bin/verify <job> up` starts the development repo's `db auth aws` (never wipes
+anything), and for every service of the job's task creates an empty database, builds the
+worktree's jar and runs it on a free port with the datasource pointed at that database and
+the JWT keys at the local Keycloak. `sf-verifier` (Sonnet) calls each spec's `## Local check`
+as `admin`/`manager`/`user`/`basic`, runs `verify smoke`, writes the report `up` named
+(`VERIFY: PASS | FAIL | SKIP`); `job task-result` turns it into each job's
+`round-N/verify.md`, tied to the commit. `down` stops the apps and drops the databases. FAIL goes back to the builder; SKIP (no Docker, no
 development repo) escalates, because nothing merges unchecked.
 
 ## Permissions and the realm
@@ -53,6 +54,19 @@ groups Administrator/Manager/Employee, `user_id`/`permission_groups` claims) and
 declares its permissions in `permissions.txt`, checked against `Constants.ApiScopes` by a unit
 test; `verify up` syncs it into the realm, `job merge` → `verify publish` commits it in the
 development repo (under the shared lock, `pull --rebase`, push).
+
+## Tasks across services
+
+A feature that needs another service becomes a task: the root job plus one job per other
+service (`job link`, only after the user says yes), each in its own repo and branch, with
+`task.json`/`task.md` in the root job's folder. Jobs run their own pipeline up to `verify`
+and wait there for each other; one `sf-verifier` then checks the task: every branch booted
+and wired (`client.<name>.base-uri` → the other app's run port), callers of the changed
+services booted from their base branch, the flow, and a smoke pass (parameterless GETs from
+`/v3/api-docs`, 5xx = broken). `job task-result` sends only the `FAULT` services back to build.
+`job merge` refuses until every job is approved, and merges callees before callers.
+Rejected: one job editing several repos (one branch and PR per repo is what reviewers and
+GitHub understand), and checking each service alone (it misses contract breaks).
 
 ## Parallel runs
 
@@ -95,6 +109,4 @@ every folder, and a project file would duplicate it and add an approval prompt. 
 ## Not handled
 
 - GitLab, Jira: GitHub issues and PRs only (`gh`).
-- Changes spanning several services in one job: intake builds this service's part and names
-  the rest, to be filed as an issue in the other repo.
 - End-to-end test suites: the development repo has none on purpose.

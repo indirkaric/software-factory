@@ -1,13 +1,25 @@
 #!/usr/bin/env python3
-"""Run a job's branch locally against the development stack, for sf-verifier.
+"""Run a job's task locally against the development stack, for sf-verifier.
 
 Usage:
-  verify <job> up [--arg key=value ...]   infra, the service's permissions, a fresh database, boot the app
+  verify <job> up [--arg [<service>:]key=value ...]
+                                          boot the whole task: every job's branch, wired to each
+                                          other, plus the services that call them (from their base
+                                          branch); prints APP lines, REPORT (the file to write)
+  verify <job> smoke                      every running app's GET endpoints without parameters,
+                                          as admin: anything 5xx is broken (regressions)
   verify <job> token [admin|manager|user|basic]   an access token from the local Keycloak
-  verify <job> down                       stop the app, drop its database (and the infra, see below)
+  verify <job> down                       stop every app of the task, drop their databases
   verify <job> publish                    after the merge: commit + push new permissions to the dev repo
   verify gc                               clean up apps of finished, dead or stale jobs (any session)
   verify ps                               what the factory runs right now, on which ports
+
+A task is a feature across services (factory/bin/job: task.json in the root job's folder);
+a job without one is a task of one. `up` refuses until every job of the task is in verify.
+Each app's `client.<name>.base-uri` that names another app of the run is pointed at that
+app's port. Services next to this repo whose application.yaml calls a changed service
+(`client: <service>:`) also run, from origin/<their base branch>, so the check sees
+whether the change breaks a caller.
 
 Parallel sessions: every running app holds a lease in ~/.cache/software-factory/run (pid,
 port, database), taken under one lock. Ports come from `verify.ports` (51000-51999) and
@@ -28,6 +40,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from contextlib import contextmanager
@@ -45,7 +58,11 @@ PORTS = VCFG.get("ports", [51000, 51999])
 MAX_MINUTES = VCFG.get("max_minutes", 45)
 INFRA = VCFG.get("infra", ["db", "auth", "aws"])
 RUN = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "software-factory" / "run"
-SERVICE = re.sub(r"[^a-z0-9]", "_", REPO.name.lower())
+def norm(name):
+    return re.sub(r"[^a-z0-9]", "_", name.lower())
+
+
+SERVICE = norm(REPO.name)
 
 
 def die(msg, code=1):
@@ -107,8 +124,8 @@ def compose(*args, check=True):
     return res
 
 
-def db_name(job_id):
-    return f"sfv_{SERVICE}_" + re.sub(r"[^a-z0-9]", "_", job_id.lower())
+def db_name(service, job_id):
+    return f"sfv_{norm(service)}_{norm(job_id)}"[:63]
 
 
 def psql(sql, check=True):
@@ -127,8 +144,8 @@ def port_busy(port):
 
 # --- leases ---------------------------------------------------------------------------
 
-def lease_path(job_id):
-    return RUN / f"{SERVICE}--{job_id}.json"
+def lease_path(service, job_id):
+    return RUN / f"{norm(service)}--{job_id}.json"
 
 
 def leases():
@@ -150,8 +167,8 @@ def alive(lease):
     return lease["jar"] in cmd
 
 
-def pick_port():
-    taken = {l["port"] for _, l in leases()}
+def pick_port(also=()):
+    taken = {l["port"] for _, l in leases()} | set(also)
     for port in range(PORTS[0], PORTS[1] + 1):
         if port not in taken and not port_busy(port):
             return port
@@ -180,6 +197,9 @@ def release(path, lease):
     stop_app(lease)
     if lease.get("db") and infra_running():
         psql(f'DROP DATABASE IF EXISTS "{lease["db"]}" WITH (FORCE)', check=False)
+    if lease.get("checkout"):  # a caller booted from its base branch: drop the temporary worktree
+        subprocess.run(["git", "-C", lease["repo"], "worktree", "remove", "--force", lease["checkout"]],
+                       capture_output=True)
     path.unlink(missing_ok=True)
 
 
@@ -221,7 +241,7 @@ def infra_maybe_down():
 def stale(lease):
     if not alive(lease) or time.time() - lease["started"] > MAX_MINUTES * 60:
         return True
-    jf = Path(lease["factory"]) / "jobs" / lease["job"] / "job.json"
+    jf = Path(lease.get("owner") or "/nonexistent")
     try:
         return json.loads(jf.read_text())["stage"] != "verify"
     except (OSError, ValueError, KeyError):
@@ -250,81 +270,230 @@ def sync_permissions(wt):
         print("PERMISSIONS: " + r.stdout.strip().splitlines()[0])
 
 
+def task(job_id):
+    """(task folder, task id, members): members are dicts service/repo/job/worktree/round dir."""
+    j, _ = job(job_id)
+    tdir = Path(j["task"]) if j.get("task") else FACTORY / "jobs" / job_id
+    tf = tdir / "task.json"
+    rows = json.loads(tf.read_text())["members"] if tf.exists() else [
+        {"service": REPO.name, "repo": str(REPO), "job": job_id}]
+    members = []
+    for m in rows:
+        jf = Path(m["repo"]) / "factory/jobs" / m["job"] / "job.json"
+        mj = json.loads(jf.read_text())
+        members.append({**m, "jobjson": str(jf), "stage": mj["stage"], "worktree": Path(mj["worktree"]),
+                        "logdir": jf.parent / f"round-{mj['round']}"})
+    return tdir, f"{tdir.parents[2].name}/{tdir.name}", members
+
+
+YAML = "src/main/resources/application.yaml"
+
+
+def clients(wt, text=None):
+    """`client: <name>: base-uri: "..."` entries of a service's application.yaml."""
+    if text is None:
+        text = (wt / YAML).read_text() if (wt / YAML).exists() else ""
+    m = re.search(r"^client:\s*\n((?:[ \t]+.*\n?|\s*\n)*)", text, re.M)
+    return dict(re.findall(r'^  ([a-z0-9-]+):\s*\n\s+base-uri:\s*"?([^"\s]+)"?', m.group(1), re.M)) if m else {}
+
+
+def base_ref(repo):
+    """origin/<base> of a sibling repo, freshly fetched (its local checkout may be stale)."""
+    git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True)
+    git("fetch", "-q", "origin")
+    return git("symbolic-ref", "--short", "refs/remotes/origin/HEAD").stdout.strip() or "origin/main"
+
+
+def callers(names, skip):
+    """Repos next to this one whose base branch calls one of `names` and aren't in the task."""
+    out = []
+    for repo in sorted(REPO.parent.iterdir()):
+        if repo.name in skip or not (repo / ".git").exists() or not (repo / "pom.xml").exists():
+            continue
+        ref = base_ref(repo)
+        text = subprocess.run(["git", "-C", str(repo), "show", f"{ref}:{YAML}"], capture_output=True, text=True).stdout
+        if set(clients(repo, text)) & set(names):
+            out.append((repo, ref))
+    return out
+
+
+def checkout_base(repo, base, tid):
+    """A detached worktree of origin/<base> of a caller repo, under the run folder."""
+    git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True)
+    dest = RUN / "checkouts" / f"{repo.name}--{norm(tid)}"
+    if dest.exists():
+        git("worktree", "remove", "--force", str(dest))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    r = git("worktree", "add", "--detach", str(dest), base)
+    return dest if r.returncode == 0 else None
+
+
+def build_jar(wt):
+    b = subprocess.run(["mvn", "-o", "-q", "-B", "package", "-DskipTests"], cwd=wt, capture_output=True, text=True)
+    if b.returncode != 0:
+        return None, (b.stdout + b.stderr)[-1500:]
+    jar = next((p for p in sorted((wt / "target").glob("*.jar")) if not p.name.endswith("original")), None)
+    return jar, None if jar else "no jar in target/"
+
+
 def up(job_id, extra):
-    j, rd = job(job_id)
+    tdir, tid, members = task(job_id)
+    not_ready = [f"{m['service']} ({m['stage']})" for m in members if m["stage"] != "verify"]
+    if not_ready:
+        die("the task is checked when every job is in verify; not yet: " + ", ".join(not_ready))
+    # The report path and the commits come first: sf-verifier writes the report even when booting fails.
+    report = tdir / f"verify-{len(list(tdir.glob('verify-[0-9]*.md'))) + 1}.md"
+    commits = {m["service"]: subprocess.run(["git", "-C", str(m["worktree"]), "rev-parse", "HEAD"],
+                                            capture_output=True, text=True).stdout.strip() for m in members}
+    (tdir / "verify-run.json").write_text(json.dumps({"report": str(report), "commits": commits}, indent=2))
+    print(f"REPORT: {report}", flush=True)
     if subprocess.run(["docker", "info"], capture_output=True).returncode != 0:
         die("docker isn't running", 3)
     if not (dev_dir() / "docker-compose.yml").exists():
         die(f"no development repo at {dev_dir()} (software-factory new development dev)", 3)
     gc(quiet=True, infra=False)
-    wt = Path(j["worktree"])
-    build = subprocess.run(["mvn", "-o", "-q", "-B", "package", "-DskipTests"], cwd=wt, capture_output=True, text=True)
-    if build.returncode != 0:
-        die("mvn package failed:\n" + (build.stdout + build.stderr)[-1500:])
-    jar = next((p for p in sorted((wt / "target").glob("*.jar")) if not p.name.endswith("original")), None)
-    if not jar:
-        die("no jar in target/")
-    persistence = (wt / "src/main/resources/liquibase").exists()
-    log = rd / "verify-app.log"
+    down_task(tid, quiet=True)
+    owner = members[-1]["jobjson"]  # the root job: callers live as long as its check
+    apps = []
+    for m in members:
+        jar, err = build_jar(m["worktree"])
+        if not jar:
+            die(f"{m['service']}: mvn package failed:\n{err}")
+        apps.append({"service": m["service"], "key": m["job"], "wt": m["worktree"], "jar": jar,
+                     "owner": m["jobjson"], "log": m["logdir"] / f"verify-{norm(m['service'])}.log",
+                     "kind": "changed", "repo": m["repo"]})
+    names = [m["service"] for m in members]
+    for repo, ref in callers(names, set(names) | {dev_dir().name}):
+        wt = checkout_base(repo, ref, tid)
+        jar, err = build_jar(wt) if wt else (None, "git worktree add failed")
+        if not jar:
+            print(f"CALLER: {repo.name} skipped, its base branch doesn't build: {(err or '').strip()[-200:]}")
+            if wt:
+                subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(wt)], capture_output=True)
+            continue
+        apps.append({"service": repo.name, "key": "base-" + norm(tid), "wt": wt, "jar": jar, "owner": owner,
+                     "log": tdir / f"verify-{norm(repo.name)}.log", "kind": "caller", "repo": str(repo),
+                     "checkout": str(wt)})
     with locked():
-        if lease_path(job_id).exists():
-            release(lease_path(job_id), json.loads(lease_path(job_id).read_text()))
         infra_up()
-        sync_permissions(wt)
-        port, db = pick_port(), db_name(job_id) if persistence else None
-        # Tokens carry iss=http://auth.factory.local:8080/realms/factory (the yaml's issuer);
-        # keys come from localhost, so the app needs no /etc/hosts entry.
-        args = [f"--server.port={port}",
-                f"--spring.security.oauth2.resourceserver.jwt.jwk-set-uri={keycloak()}/protocol/openid-connect/certs"]
-        if db:
-            psql(f'DROP DATABASE IF EXISTS "{db}" WITH (FORCE)')
-            psql(f'CREATE DATABASE "{db}"')
-            url = f"jdbc:postgresql://localhost:{dev_env('DB_PORT', '5432')}/{db}"
-            for pool in ("readwrite", "readonly"):
-                args += [f"--database.{pool}.url={url}", f"--database.{pool}.username={PG['user']}",
-                         f"--database.{pool}.password={PG['password']}"]
-        proc = subprocess.Popen(["java", "-jar", str(jar), *args, *[f"--{a}" for a in extra]],
-                                cwd=wt, stdout=log.open("w"), stderr=subprocess.STDOUT, start_new_session=True)
-        lease_path(job_id).write_text(json.dumps({
-            "pid": proc.pid, "port": port, "db": db, "jar": str(jar), "job": job_id,
-            "factory": str(FACTORY), "service": SERVICE, "started": time.time()}))
-    health = f"http://localhost:{port}/actuator/health"
-    for _ in range(90):
-        if proc.poll() is not None:
-            down(job_id, quiet=True)
-            die(f"the app exited with {proc.returncode}; last lines of {log}:\n" + "\n".join(log.read_text().splitlines()[-40:]))
+        picked = []
+        for a in apps:
+            a["port"] = pick_port(picked)
+            picked.append(a["port"])
+            if a["kind"] == "changed":
+                sync_permissions(a["wt"])
+        ports = {a["service"]: a["port"] for a in apps}
+        for a in apps:
+            args = [f"--server.port={a['port']}",
+                    f"--spring.security.oauth2.resourceserver.jwt.jwk-set-uri={keycloak()}/protocol/openid-connect/certs"]
+            for name, uri in clients(a["wt"]).items():
+                if name in ports:  # call the other app of this run, not its docker alias
+                    args.append(f"--client.{name}.base-uri=http://localhost:{ports[name]}"
+                                f"{urllib.parse.urlparse(uri).path}")
+            a["db"] = db_name(a["service"], a["key"]) if (a["wt"] / "src/main/resources/liquibase").exists() else None
+            if a["db"]:
+                psql(f'DROP DATABASE IF EXISTS "{a["db"]}" WITH (FORCE)')
+                psql(f'CREATE DATABASE "{a["db"]}"')
+                url = f"jdbc:postgresql://localhost:{dev_env('DB_PORT', '5432')}/{a['db']}"
+                for pool in ("readwrite", "readonly"):
+                    args += [f"--database.{pool}.url={url}", f"--database.{pool}.username={PG['user']}",
+                             f"--database.{pool}.password={PG['password']}"]
+            for e in extra:
+                svc, sep, kv = e.partition(":")
+                if not sep or "=" in svc:
+                    args.append(f"--{e}")
+                elif svc == a["service"]:
+                    args.append(f"--{kv}")
+            a["log"].parent.mkdir(parents=True, exist_ok=True)
+            a["proc"] = subprocess.Popen(["java", "-jar", str(a["jar"]), *args], cwd=a["wt"],
+                                         stdout=a["log"].open("w"), stderr=subprocess.STDOUT, start_new_session=True)
+            lease_path(a["service"], a["key"]).write_text(json.dumps({
+                "pid": a["proc"].pid, "port": a["port"], "db": a["db"], "jar": str(a["jar"]), "job": a["key"],
+                "owner": a["owner"], "service": a["service"], "task": tid, "started": time.time(),
+                "repo": a["repo"], "checkout": a.get("checkout")}))
+    for a in apps:
+        health = f"http://localhost:{a['port']}/actuator/health"
+        for _ in range(90):
+            if a["proc"].poll() is not None:
+                down_task(tid, quiet=True)
+                die(f"{a['service']} exited with {a['proc'].returncode}; last lines of {a['log']}:\n"
+                    + "\n".join(a["log"].read_text().splitlines()[-40:]))
+            try:
+                with urllib.request.urlopen(health, timeout=2) as r:
+                    if json.loads(r.read()).get("status") == "UP":
+                        break
+            except OSError:
+                pass
+            time.sleep(2)
+        else:
+            down_task(tid, quiet=True)
+            die(f"{a['service']} didn't report UP within 180s (everything stopped again); see {a['log']}")
+    for a in apps:
+        print(f"APP: {a['service']} {a['kind']} http://localhost:{a['port']} db {a['db'] or 'none'} log {a['log']}")
+    print(f"BASE_URL: http://localhost:{ports[REPO.name]}" if REPO.name in ports else "")
+    print("HEALTH: UP")
+
+
+def smoke(job_id):
+    """GET every parameterless endpoint of every app of the task as admin; 5xx = broken."""
+    _, tid, _ = task(job_id)
+    apps = [l for _, l in leases() if l.get("task") == tid and alive(l)]
+    if not apps:
+        die(f"nothing of the task runs; verify {job_id} up first")
+    tok = token("admin", quiet=True)
+    broken = 0
+    for l in apps:
+        base = f"http://localhost:{l['port']}"
         try:
-            with urllib.request.urlopen(health, timeout=2) as r:
-                if json.loads(r.read()).get("status") == "UP":
-                    print(f"BASE_URL: http://localhost:{port}\nLOG: {log}\nHEALTH: UP\nDATABASE: {db or 'none'}")
-                    return
-        except OSError:
-            pass
-        time.sleep(2)
-    down(job_id, quiet=True)
-    die(f"the app didn't report UP within 180s (stopped again); see {log}")
+            with urllib.request.urlopen(f"{base}/v3/api-docs", timeout=10) as r:
+                doc = json.loads(r.read())
+        except (OSError, ValueError):
+            print(f"SMOKE: {l['service']} has no /v3/api-docs; health only")
+            continue
+        prefix = urllib.parse.urlparse((doc.get("servers") or [{}])[0].get("url", "")).path.rstrip("/")
+        for path, ops in sorted(doc.get("paths", {}).items()):
+            if "get" not in ops or "{" in path:
+                continue
+            req = urllib.request.Request(base + prefix + path, headers={"Authorization": f"Bearer {tok}"})
+            try:
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    code = r.status
+            except urllib.error.HTTPError as e:
+                code = e.code
+            except OSError:
+                code = 599
+            broken += code >= 500
+            print(f"SMOKE: {l['service']} GET {prefix + path} -> {code}{'  BROKEN' if code >= 500 else ''}")
+    print(f"SMOKE: {'FAIL' if broken else 'PASS'} ({broken} broken)")
 
 
-def token(user):
+def token(user, quiet=False):
     if user not in USERS:
         die(f"user is one of {', '.join(USERS)}")
     data = urllib.parse.urlencode({"grant_type": "password", "client_id": CLIENT,
                                    "username": user, "password": user}).encode()
     try:
         with urllib.request.urlopen(f"{keycloak()}/protocol/openid-connect/token", data, timeout=10) as r:
-            print(json.loads(r.read())["access_token"])
+            tok = json.loads(r.read())["access_token"]
+            if quiet:
+                return tok
+            print(tok)
     except OSError as e:
         die(f"Keycloak refused a token for {user}: {e}")
 
 
-def down(job_id, quiet=False):
+def down_task(tid, quiet=False):
     with locked():
-        path = lease_path(job_id)
-        if path.exists():
-            release(path, json.loads(path.read_text()))
+        for path, lease in leases():
+            if lease.get("task") == tid:
+                release(path, lease)
         infra_maybe_down()
     if not quiet:
-        print("verify: stopped")
+        print("verify: stopped every app of the task")
+
+
+def down(job_id):
+    down_task(task(job_id)[1])
 
 
 def publish(job_id):
@@ -382,8 +551,9 @@ def main(argv):
     elif len(argv) == 2 and argv[1] == "publish":
         publish(argv[0])
     elif len(argv) == 2 and argv[1] == "down":
-        job(argv[0])
         down(argv[0])
+    elif len(argv) == 2 and argv[1] == "smoke":
+        smoke(argv[0])
     else:
         die(__doc__.strip())
 

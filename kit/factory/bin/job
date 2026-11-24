@@ -10,7 +10,8 @@ orchestrator never improvises them.
 Usage:
   job queue [<owner>]            what /software-factory run should do with each labeled issue;
                                  jobs another session holds show as `busy`
-  job create <issue>             new job for an open issue (labels it `factory`); prints the job id
+  job create <issue> [--task <root job folder>]
+                                 new job for an open issue (labels it `factory`); prints the job id
   job claim <job> <owner>        this session works on the job now (a lease; refused while another holds it)
   job advance <job> <stage>      move a job to <stage>, or refuse (build → gate opens the draft PR)
   job merge <job>                APPROVE → sync with the base branch, gate, merge the PR
@@ -19,6 +20,11 @@ Usage:
   job agents <job> <json>        record the routed agent set (called by factory/bin/route)
   job sync <job>                 refresh reviews, gate and cost from the job's files
   job summary [<job>...]         table of jobs: issue, stage, PR, cost, time
+  job link <job> <service>       the user approved a change in the sibling repo ../<service>: open an
+                                 issue there (what to change on stdin) and a job on its own branch,
+                                 both part of this job's task
+  job task <job>                 the task's jobs in merge order and `TASK: <what to do next>`
+  job task-result <job>          after sf-verifier: copy the task check's verdict to each job, advance them
 
 <job> is a job id (004-dark-mode) or an issue number (12).
 
@@ -26,6 +32,13 @@ Several Claude Code sessions can run /software-factory at once in the same
 repo: every job has its own worktree and branch, `create` is serialized, and a
 session claims a job before working on it, so two sessions never drive the
 same job. A claim expires after config.json `lease_minutes`.
+
+A task is one feature across services that sit side by side in one folder: the root job
+(where the issue was filed) plus one linked job per other service, each on its own branch
+`factory/<id>` in its own repo. task.json and task.md live in the root job's folder. The
+services are checked together (factory/bin/verify), and merged in task order: linked
+services first (they provide what the root calls), the root last. A job without links is
+a task of one.
 """
 
 import fcntl
@@ -49,7 +62,7 @@ MARKER = "<!-- factory -->"
 TRANSITIONS = {
     "intake": {"needs-info", "rejected", "spec"},
     "needs-info": {"intake", "rejected"},
-    "spec": {"build"},
+    "spec": {"build", "needs-human"},
     "build": {"gate", "needs-human"},
     "gate": {"review", "build", "needs-human"},
     "review": {"verify", "build", "needs-human"},
@@ -382,6 +395,169 @@ def check_reviews_done(job):
     require(not bad, f"first line isn't a verdict in review-{bad[0]}.md" if bad else "")
 
 
+# ---- Tasks (one feature across several services) -------------------------
+
+
+def task_of(job):
+    """The task folder: the root job's folder. A job without a task is a task of one."""
+    return Path(job["task"]) if job.get("task") else job_dir(job["id"])
+
+
+def read_job(repo, job_id):
+    """Another job's job.json, read-only (no lock)."""
+    return json.loads((Path(repo) / "factory/jobs" / job_id / "job.json").read_text())
+
+
+def task_members(job):
+    """[(service, repo, job)] in merge order: linked services first, the root last."""
+    tf = task_of(job) / "task.json"
+    if not tf.exists():
+        return [(REPO.name, REPO, job)]
+    out = []
+    for m in json.loads(tf.read_text())["members"]:
+        repo = Path(m["repo"])
+        j = job if (repo == REPO and m["job"] == job["id"]) else read_job(repo, m["job"])
+        out.append((m["service"], repo, j))
+    return out
+
+
+def other_services(spec):
+    """Service names under spec.md's `## Other services` (`- <service>: ...`); None without it."""
+    body = section(spec, "Other services") if spec.exists() else None
+    if body is None:
+        return None
+    names = [re.sub(r"[`*]", "", line[2:].split(":", 1)[0]).strip()
+             for line in body.splitlines() if line.startswith("- ")]
+    return [n for n in names if n and n.lower() != "none"]
+
+
+def write_task_md(tdir, task):
+    rows = []
+    for m in task["members"]:
+        j = read_job(m["repo"], m["job"])
+        rows.append(f"| {m['service']} | {m['job']} | `{j['branch']}` | {j['worktree']} | {j['issue_url']} |")
+    whats = "\n\n".join(f"### {m['service']}\n\n{m['what']}" for m in task["members"] if m.get("what"))
+    (tdir / "task.md").write_text(f"""# Task: {task['title']}
+
+One feature across several services. Root: `{task['root']}` ({task['issue_url']}).
+Each row is an ordinary factory job in its own repo, on its own branch. The services are
+checked together (`factory/bin/verify <job> up` boots all of them) and merged in this order.
+
+| service | job | branch | worktree | issue |
+|---|---|---|---|---|
+{chr(10).join(rows)}
+
+## Contract
+
+What each linked service must provide, from the root job's spec (`## Other services`).
+The root job's spec.md is the full contract: {tdir / 'spec.md'}
+
+{whats}
+""")
+
+
+def cmd_link(job, service, what):
+    require(job["stage"] in {"spec", "build"},
+            f"{job['id']} is in {job['stage']}; link a service while the job is in spec or build")
+    require(re.fullmatch(r"[a-z0-9][a-z0-9-]*", service), f"not a service name: {service}")
+    require(what.strip(), "say on stdin what the other service must change")
+    other = REPO.parent / service
+    require((other / ".git").exists() and (other / "pom.xml").exists(),
+            f"no Maven git repo at {other}; projects live side by side, clone {service} there first")
+    require(service not in {s for s, _, _ in task_members(job)}, f"{service} is already part of the task")
+    cli = Path.home() / ".local/bin/software-factory"
+    att = run([str(cli), "attach", str(other)], cwd=other, check=False)
+    require(att.returncode == 0, f"attach failed in {other}: {(att.stderr or att.stdout).strip()[-400:]}")
+    tdir = task_of(job)
+    root = read_job(tdir.parents[2], tdir.name) if job.get("task") else job
+    body = (f"{what.strip()}\n\nPart of a factory task across services, started from "
+            f"{root['issue_url']} ({root['title']}). The user approved this change here.")
+    url = run(["gh", "issue", "create", "--title", f"{root['title']} ({service} part)", "--body", body],
+              cwd=other).stdout.strip().splitlines()[-1]
+    number = url.rstrip("/").rsplit("/", 1)[1]
+    created = run([str(other / "factory/bin/job"), "create", number, "--task", str(tdir)], cwd=other)
+    new_id = created.stdout.strip().splitlines()[-1]
+    with open(tdir / ".task.lock", "w") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        tf = tdir / "task.json"
+        if tf.exists():
+            task = json.loads(tf.read_text())
+        else:
+            task = {"root": f"{REPO.name}/{root['id']}", "title": root["title"], "issue_url": root["issue_url"],
+                    "members": [{"service": REPO.name, "repo": str(REPO), "job": root["id"]}]}
+            job["task"] = str(tdir)
+            save(job)
+        # The new service provides what the linking job calls: it merges before it.
+        at = next(i for i, m in enumerate(task["members"]) if m["repo"] == str(REPO) and m["job"] == job["id"])
+        task["members"].insert(at, {"service": service, "repo": str(other), "job": new_id, "what": what.strip()})
+        tf.write_text(json.dumps(task, indent=2) + "\n")
+        write_task_md(tdir, task)
+    claude = "missing" if "CLAUDE.md: missing" in att.stdout else "ok"
+    print(f"LINKED: {service} job {new_id} issue {url} repo {other} CLAUDE.md: {claude}")
+
+
+def approved(repo, j):
+    if j["stage"] in {"merging", "merged"}:
+        return True
+    return j["stage"] == "approve" and first_line(Path(repo) / "factory/jobs" / j["id"] / "decision.md") == "APPROVE"
+
+
+def task_next(members):
+    stages = [(svc, j["stage"]) for svc, _, j in members]
+    blocked = [f"{s} {st}" for s, st in stages if st in WAITING | {"rejected"}]
+    if blocked:
+        return "blocked " + ", ".join(blocked)
+    if all(st == "merged" for _, st in stages):
+        return "done"
+    if all(st == "verify" for _, st in stages):
+        return "verify"
+    if all(approved(repo, j) for _, repo, j in members):
+        svc, repo, j = next(m for m in members if m[2]["stage"] != "merged")
+        return f"merge {svc} {repo}/factory/bin/job merge {j['id']}"
+    return "wait"
+
+
+def cmd_task(job):
+    members = task_members(job)
+    for svc, repo, j in members:
+        print("\t".join([svc, j["id"], j["stage"], str(j["round"]), f"#{j['pr']}" if j["pr"] else "-", str(repo)]))
+    print(f"TASK: {task_next(members)}")
+
+
+def cmd_task_result(job):
+    tdir = task_of(job)
+    runf = tdir / "verify-run.json"
+    require(runf.exists(), f"no task check has run; sf-verifier runs factory/bin/verify {job['id']} up")
+    info = json.loads(runf.read_text())
+    report = Path(info["report"])
+    require(report.exists(), f"sf-verifier hasn't written {report}")
+    verdict = re.sub(r"^VERIFY:\s*", "", first_line(report) or "")
+    require(verdict in {"PASS", "FAIL", "SKIP"}, f"{report.name} starts with {first_line(report)!r}")
+    fault = {s.strip() for s in header(report).get("FAULT", "").split(",") if s.strip()}
+    body = report.read_text().split("\n\n", 1)[1] if "\n\n" in report.read_text() else ""
+    members = task_members(job)
+    for fh in _locks.values():  # each job's own script advances it below
+        fh.close()
+    _locks.clear()
+    for svc, repo, j in members:
+        if j["stage"] != "verify":
+            print(f"{svc} {j['id']}: {j['stage']}, not in verify; unchanged")
+            continue
+        if verdict == "FAIL" and fault and svc not in fault:
+            print(f"{svc} {j['id']}: not at fault; stays in verify until the task is checked again")
+            continue
+        rd = Path(repo) / "factory/jobs" / j["id"] / f"round-{j['round']}"
+        rd.mkdir(parents=True, exist_ok=True)
+        (rd / "verify.md").write_text(f"VERIFY: {verdict}\nCOMMIT: {info['commits'].get(svc, '')}\n"
+                                      f"REPORT: {report}\n\n{body}")
+        target = {"PASS": "approve", "SKIP": "needs-human"}.get(
+            verdict, "build" if j["round"] < j["round_limit"] else "needs-human")
+        res = subprocess.run([str(Path(repo) / "factory/bin/job"), "advance", j["id"], target],
+                             cwd=repo, capture_output=True, text=True)
+        print(f"{svc} {j['id']}: {target}" if res.returncode == 0
+              else f"{svc} {j['id']}: refused: {(res.stderr or res.stdout).strip()}")
+
+
 def next_round(job):
     job["round"] += 1
     round_dir(job).mkdir(exist_ok=True)
@@ -440,7 +616,20 @@ def advance(job, stage):
 
     elif old == "spec":
         require((d / "spec.md").exists(), "spec.md doesn't exist")
-        next_round(job)
+        others = other_services(d / "spec.md")
+        require(others is not None, "spec.md has no `## Other services` section")
+        missing = [s for s in others if s not in {svc for svc, _, _ in task_members(job)}]
+        if stage == "build":
+            lines = [l for l in (section(d / "spec.md", "Other services") or "").splitlines()
+                     if l.startswith("- ") and any(m in l.split(":", 1)[0] for m in missing)]
+            require(not missing, f"the spec needs changes in {', '.join(missing)}: ask the user; all yes: "
+                                 f"`job link {job['id']} <service>` for each, with its line on stdin; any no: "
+                                 f"`job advance {job['id']} needs-human`\n" + "\n".join(lines))
+            next_round(job)
+        else:
+            require(missing, "every service the spec needs is part of the task; go to build")
+            escalate(job, "The spec needs changes in other services, and the user didn't approve them:\n\n"
+                          + (section(d / "spec.md", "Other services") or ""))
 
     elif old == "build" and stage == "gate":
         status = first_line(d / "build.md")
@@ -567,7 +756,7 @@ def slugify(title):
     return "-".join(words) or "issue"
 
 
-def cmd_create(number):
+def cmd_create(number, task=None):
     JOBS.mkdir(parents=True, exist_ok=True)
     lock = open(JOBS / ".create.lock", "w")
     fcntl.flock(lock, fcntl.LOCK_EX)  # two sessions never take the same id or issue
@@ -595,6 +784,7 @@ def cmd_create(number):
         "stage": "intake", "round": 0, "round_limit": CONFIG["max_rounds"],
         "intake": None, "agents": None, "gate": None, "reviews": {},
         "cost_usd": 0.0, "started": now(), "ended": None, "claim": None,
+        "task": task,
     }
     write_issue_md(job)
     save(job)
@@ -630,6 +820,9 @@ def cmd_queue(owner=None):
             other_rows.append(("skip", n, j["id"], j["stage"], f"rejected; delete factory/jobs/{j['id']} to retry"))
         elif j["stage"] == "merged":
             other_rows.append(("skip", n, j["id"], j["stage"], "merged"))
+        elif j.get("task") and Path(j["task"]).parents[2] != REPO:
+            other_rows.append(("task", n, j["id"], j["stage"], f"part of the task in {Path(j['task']).parents[2]}; "
+                               "the factory drives it from there"))
         elif claim_holder(j, owner):
             other_rows.append(("busy", n, j["id"], j["stage"], "another session is working on it"))
         else:
@@ -652,6 +845,15 @@ def cmd_queue(owner=None):
 
 def cmd_merge(job):
     sync(job)
+    members = task_members(job)
+    if len(members) > 1:
+        names = ", ".join(s for s, _, _ in members)
+        waiting = [s for s, repo, j in members if not approved(repo, j)]
+        require(not waiting, f"every service of the task must be approved first; not yet: {', '.join(waiting)}")
+        for svc, repo, j in members:
+            if repo == REPO and j["id"] == job["id"]:
+                break
+            require(j["stage"] == "merged", f"merge {svc} ({j['id']}) first; the task merges in order {names}")
     if job["stage"] == "approve":
         save(advance(job, "merging"))
     if job["stage"] != "merging":
@@ -806,6 +1008,15 @@ def main(argv):
             print(f"{job['id']}: claimed ({job['stage']})")
         elif cmd == "create" and len(args) == 1 and args[0].isdigit():
             cmd_create(args[0])
+        elif cmd == "create" and len(args) == 3 and args[0].isdigit() and args[1] == "--task":
+            require(Path(args[2], "job.json").exists(), f"no root job at {args[2]}")
+            cmd_create(args[0], args[2])
+        elif cmd == "link" and len(args) == 2:
+            cmd_link(resolve(args[0]), args[1], sys.stdin.read())
+        elif cmd == "task" and len(args) == 1:
+            cmd_task(resolve(args[0]))
+        elif cmd == "task-result" and len(args) == 1:
+            cmd_task_result(resolve(args[0]))
         elif cmd == "advance" and len(args) == 2:
             job = advance(sync(resolve(args[0])), args[1])
             save(sync(job))

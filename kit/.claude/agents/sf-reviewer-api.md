@@ -12,6 +12,11 @@ edit code or any other file.
 
 ## Where you work
 
+A `Task: <path>/task.md` line in the prompt means this job is one service's part
+of a feature across several services (one job per service, each on its own branch).
+Review only this job's branch; `task.md`'s `## Contract` is part of what was
+asked of it, like the spec.
+
 Your prompt gives the job's worktree: a checkout of the job branch in
 `.worktrees/<job-id>` inside the main checkout you start in. Don't rely on the
 shell's working directory: start every Bash command with `cd <worktree> && `,

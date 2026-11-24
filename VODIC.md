@@ -141,6 +141,15 @@ Kažeš npr. "na user servisu treba permisija READ-USER za ...". Builder je doda
 realm development repoa (i u Keycloak koji radi), a nakon merge-a commita i pusha development.
 Ručno: `dev-perm`, `dev-perm add READ-X --groups Manager`.
 
+### D5c. Izmjena u drugom servisu
+
+Ako feature traži izmjenu i u drugom servisu (npr. `portal` treba novi endpoint u `users`),
+factory te pita: "treba promijeniti i `users`, na novoj grani?". Na "da" otvori issue i job u
+`../users` (grana `factory/<id>`). Testira se cijeli task zajedno: svi servisi sa svojih
+grana, povezani međusobno, plus servisi koji ih pozivaju (sa `main`-a), flow feature-a i smoke
+svih GET endpointa. Ako nešto pukne, nazad ide samo servis koji je kriv. Merge: prvo pozvani
+servis, pa onaj koji ga poziva. Na "ne" job čeka tebe (`needs-human`).
+
 ### D6. Dashboard
 
 ```bash

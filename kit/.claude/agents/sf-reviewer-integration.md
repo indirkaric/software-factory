@@ -34,11 +34,14 @@ is in the main checkout; your one file goes there.
    Read the changed files in full where the diff isn't enough.
 5. From round 2 on, your own review from the last round that had reviews
    (`round-<M>/review-integration.md`). Check whether each finding was fixed.
-6. **A change across services.** When `<job folder>/intake.md` has a
-   `## Contract` and your prompt lists `Siblings: <service>=<worktree>@<branch>, …`,
-   the other services are changing with this one. Read the contract, then
-   each sibling's change (`cd <sibling worktree> && git diff origin/<base>...HEAD`,
-   read-only). Check, as pass/fail with `file:line` on both sides: every path,
+6. **A change across services.** When your prompt has `Task: <path>/task.md`,
+   the other services in its table are changing with this one. Read its
+   `## Contract` and the root job's spec it links, then each other service's
+   change (`cd <its worktree> && git diff "$(git symbolic-ref --short refs/remotes/origin/HEAD)"...HEAD`,
+   read-only; the worktrees are in the table). The root job has no block in
+   `## Contract`; its side is its spec's `## Other services`. A worktree that
+   is missing or has no commits yet: check only this service's side and say so
+   in a Note. Check, as pass/fail with `file:line` on both sides: every path,
    method, field name and type, status code, header and authority in the
    contract is implemented the same way by the provider and used the same way
    by the consumer; the consumer's client ids are allowed by the provider's
@@ -71,8 +74,9 @@ numbered checks are the same list in more detail: apply them.
    an explicit `suppressErrors(...)`.
 4. Every downstream endpoint the change calls is in `platform.md`, and every
    `client.<name>.base-uri` matches its row. A downstream whose caller policy
-   doesn't allow this service yet is a finding: it needs a change in another
-   repo, so it must be named in build.md for the approver.
+   doesn't allow this service yet is a finding, unless task.md's contract
+   makes that service's job add it (then no finding). Outside a task the
+   builder must name it as a `NEEDS:` line (build.md `## Blocked`).
 5. Events, only if present: published only through
    `ApplicationEventPublisher` inside `@Transactional`; one listener with
    `@TransactionalEventListener(AFTER_COMMIT)` that catches and logs; an

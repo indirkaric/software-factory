@@ -90,6 +90,17 @@ adds them to the development repo's realm (`factory-realm.json`: realm role + cl
 group, like a real realm) during the local check, and commits that realm after the merge.
 Projects live side by side in one folder (`~/Desktop/projects/<service>`, `.../development`).
 
+## Features across services
+
+When a feature needs another service to change too (`portal` needs a new endpoint in `users`),
+the spec names it under `## Other services` and the factory **asks you**. On yes it opens an
+issue and a job in `../users` on its own branch `factory/<id>`, and both jobs form one task.
+The task is tested as a whole: when every job has passed its reviews, `verify` boots each
+service from its branch, wires them to each other, also boots the services that call them
+(from their `main`, so a breaking change shows), runs the feature's flow and a smoke pass of
+every GET endpoint. A failure goes back only to the service at fault. Merges follow the task
+order: the called service first, the caller last.
+
 ## Parallel sessions and ports
 
 Every session can run its own job. Each job has its own worktree, branch, port (51000-51999,
