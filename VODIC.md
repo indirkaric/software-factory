@@ -128,6 +128,8 @@ Merge ide tek kad je i GitHub Actions zelen.
 - `factory:needs-human`: pitanje je na PR-u. Merge na GitHubu = odobreno; ili
   `/software-factory za #3: PAID se nikad ne vraća nazad, dodaj test` = nova runda.
 - Odbaci: `/software-factory odbaci #3, radićemo drugačije`.
+- Lokalna provjera preskočena (zauzet port, ugašen docker): popravi to, pa
+  `/software-factory run`; job ponovo provjerava isti commit, bez nove runde.
 
 ### D5. Paralelno
 

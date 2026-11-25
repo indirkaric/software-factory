@@ -97,6 +97,8 @@ and registers the service in the development repo (compose, database, host alias
    - `factory:needs-human`: a question on the PR; merge it on GitHub to approve, or
      `/software-factory for #3: PAID never goes back, add a test` for another round.
    - Reject: `/software-factory reject #3, we'll do it differently`.
+   - Local check skipped (a busy port, docker off): fix it, then `/software-factory run`;
+     the job checks the same commit again, no new round.
 5. In parallel: open another Claude Code session in the same service and run another issue.
    Each job has its own worktree (`.worktrees/<job>`), branch (`factory/<job>`), and during
    the local check its own port and database; `factory/bin/verify ps` lists them.

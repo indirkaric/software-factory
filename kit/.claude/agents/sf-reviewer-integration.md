@@ -105,4 +105,5 @@ Non-blocking observations. Optional.
   skim on the dashboard. The detail goes in the sections below it.
 - Under Findings, write "None." when there are none.
 
-When you're done, reply with one line: the first line of review-integration.md.
+Write review-integration.md with the Write tool before you reply: a verdict only in your reply
+counts as no review. Then reply with one line: the first line of review-integration.md.

@@ -13,6 +13,8 @@ Usage:
   verify <job> publish                    after the merge: commit + push new permissions to the dev repo
   verify gc                               clean up apps of finished, dead or stale jobs (any session)
   verify ps                               what the factory runs right now, on which ports
+  verify preflight                        can a local check run now (dev repo, docker, free infra
+                                          ports)? PREFLIGHT: OK, or BLOCKED with the reasons (exit 3)
 
 A task is a feature across services (factory/bin/job: task.json in the root job's folder);
 a job without one is a task of one. `up` refuses until every job of the task is in verify.
@@ -210,18 +212,44 @@ def infra_running():
     return set(INFRA) <= set(r.stdout.split())
 
 
+def infra_problems():
+    """Why the shared infra can't start now: [] when it runs or can be started."""
+    if not (dev_dir() / "docker-compose.yml").exists():
+        return [f"no development repo at {dev_dir()} (docker-compose.yml missing)"]
+    if subprocess.run(["docker", "info"], capture_output=True).returncode != 0:
+        return ["docker isn't running, or this user can't reach it"]
+    if infra_running():
+        return []
+    ports = {"DB_PORT": ("5432", "db"), "AUTH_PORT": ("8080", "auth"), "AWS_PORT": ("4566", "aws")}
+    running = set(compose("ps", "--status", "running", "--services", check=False).stdout.split())
+    problems = []
+    for key, (default, service) in ports.items():
+        port = int(dev_env(key, default))
+        if service in INFRA and service not in running and port_busy(port):
+            problems.append(f"port {port} ({service}) is used by another program (another stack, an ssh "
+                            f"tunnel?). Stop it, or set {key} to a free port in {dev_dir() / '.env'}; "
+                            "the factory never kills it")
+    return problems
+
+
+def preflight():
+    """Can a local check run now? Exit 0 with PREFLIGHT: OK, else exit 3 with the reasons."""
+    problems = infra_problems()
+    if problems:
+        print("PREFLIGHT: BLOCKED")
+        for p in problems:
+            print(f"- {p}")
+        sys.exit(3)
+    print("PREFLIGHT: OK")
+
+
 def infra_up():
     """Start the shared infra if needed; remember when the factory started it."""
+    problems = infra_problems()
+    if problems:
+        die("; ".join(problems), 3)
     if infra_running():
         return
-    ports = {"DB_PORT": "5432", "AUTH_PORT": "8080", "AWS_PORT": "4566"}
-    running = set(compose("ps", "--status", "running", "--services", check=False).stdout.split())
-    for key, default in ports.items():
-        port = int(dev_env(key, default))
-        service = {"DB_PORT": "db", "AUTH_PORT": "auth", "AWS_PORT": "aws"}[key]
-        if service not in running and port_busy(port):
-            die(f"port {port} ({service}) is used by another program (another stack?). Stop it, "
-                f"or set {key} to a free port in {dev_dir() / '.env'}; the factory never kills it", 3)
     compose("up", "-d", "--wait", *INFRA)
     (RUN / "infra-started-by-factory").write_text(str(dev_dir()))
     realm = dev_dir() / "scripts" / "realm.py"
@@ -536,6 +564,8 @@ def ps():
 def main(argv):
     if argv == ["gc"]:
         gc()
+    elif argv == ["preflight"]:
+        preflight()
     elif argv == ["ps"]:
         ps()
     elif len(argv) >= 2 and argv[1] == "up":

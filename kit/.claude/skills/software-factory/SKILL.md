@@ -13,10 +13,9 @@ never work around it. Bosnian to the user; GitHub and job files in English.
 
 ## First: attach
 
-Before every command except `new`, run `~/.local/bin/software-factory attach`.
-It installs or upgrades `factory/` (out of git) and prints `CLAUDE.md: ok|missing`.
-Command missing: tell the user to run `./software-factory setup` in the factory
-repo. Failure: say why and stop.
+Before every command except `new`, run `~/.local/bin/software-factory attach`: it installs
+or upgrades `factory/` (out of git) and prints `CLAUDE.md: ok|missing`. Command missing: tell
+the user to run `./software-factory setup` in the factory repo. Failure: say why and stop.
 
 **Missing CLAUDE.md** (this repo or a linked one): say in one line that the
 factory writes it first, spawn `sf-context` with `Service root: <repo>. Write
@@ -25,10 +24,9 @@ the user says yes (show `git diff --stat`). Then go on.
 
 ## Session id
 
-Several sessions may run the factory at once. Pick `<sid>` once per
-conversation: `date +%s%N | tail -c 9`. Run `job claim <n> <sid>` before every
-step you start for a job (agent, gate, merge). If it refuses, another session
-owns that job: leave it alone and say so in one line.
+Several sessions may run the factory at once. Pick `<sid>` once per conversation: `date
++%s%N | tail -c 9`. Run `job claim <n> <sid>` before every step you start for a job (agent,
+gate, merge). If it refuses, another session owns that job: leave it alone, say so in one line.
 
 ## Pipeline of one job
 
@@ -59,10 +57,9 @@ files only by their first line (`head -1`; exception: build.md's `## Blocked`).
 
 ## Spawning agents
 
-Agent tool, in the background, `subagent_type` = the agent name (`sf-…`);
-`model` from `job.json` `agents` for reviewers only. Each replies with one line.
-Don't poll: end the turn with a one-line status. Spawn independent agents
-(different jobs, one round's reviewers) in one message.
+Agent tool, in the background, `subagent_type` = the agent name (`sf-…`); `model` from
+`job.json` `agents` for reviewers only. Each replies with one line. Don't poll: end the turn
+with a one-line status. Spawn independent agents (different jobs, a round's reviewers) at once.
 
 Every job prompt starts with this header, from `job.json`:
 ```
@@ -103,11 +100,11 @@ told it is resuming. Report one line per transition, e.g.
   the builder: `The gate failed: read round-<N-1>/checks.md and checks.log, fix
   it, push, update build.md.`
 - **review**: spawn every reviewer in `agents.reviewers` in one message
-  (`sf-reviewer-<r>`, its model, `<header> Review round <N>.`). WAIT FOR ALL;
-  `job sync <id>` after each. Any CHANGES → `job advance <id> build` (or
-  `needs-human`), resume the builder: `Round <N-1> reviews are in
-  round-<N-1>/. Address every VERDICT: CHANGES, push, update build.md.` All
-  PASS → `job advance <id> verify`.
+  (`sf-reviewer-<r>`, its model, `<header> Review round <N>.`). WAIT FOR ALL; `job sync
+  <id>` after each; one that replied but shows `pending` → resume it once: `Write
+  round-<N>/review-<r>.md first, then reply.` Any CHANGES → `job advance <id> build` (or
+  `needs-human`), resume the builder: `Round <N-1> reviews are in round-<N-1>/. Address
+  every VERDICT: CHANGES, push, update build.md.` All PASS → `job advance <id> verify`.
 - **verify**: `job task <id>`. `TASK: wait` → the job waits in verify for the
   task's other jobs. `TASK: blocked <service> <stage>` → tell the user; the
   task's jobs are done for this run. `TASK: verify` → spawn one `sf-verifier` for the task,
@@ -116,7 +113,8 @@ told it is resuming. Report one line per transition, e.g.
   `approve` → spawn `sf-approver` with `<header> PR: #<pr>. Final round:
   <N>.`; `build` → resume its builder: `The local check failed: read
   round-<N-1>/verify.md, fix it, push, update build.md.`; `needs-human` → tell
-  the user (on SKIP: what to start); unchanged → waits for the next check.
+  the user (on SKIP: what to free or start; once fixed, `job retry` re-checks the
+  same commit, no rebuild); unchanged → waits for the next check.
   The verifier replies `VERIFY: NOT RUN …` → `job task <id>` again.
 - **approve**: `ESCALATE` → `job advance <id> needs-human`. `APPROVE` → `job
   task <id>`; for `TASK: merge <service> <command>` run that command in the
@@ -124,8 +122,8 @@ told it is resuming. Report one line per transition, e.g.
   task` again until `done`. `wait`: other jobs aren't approved yet; `blocked`:
   as in **verify**.
 
-A job is done for this run at `merged`, `rejected`, `needs-info` or `needs-human` (a task
-job waiting in verify or approve is not, unless `TASK: blocked`).
+Done for this run: `merged`, `rejected`, `needs-info`, `needs-human` (a task job waiting
+in verify or approve only on `TASK: blocked`).
 
 ## /software-factory issues
 
@@ -133,10 +131,11 @@ Show `gh issue list --label factory --state open` and `job summary`.
 
 ## /software-factory run
 
-1. `job queue <sid>`. Lines are `action issue job stage note`: start every
-   `resume` and `new` line (`new` → `job create <n>`, then intake); `hold` waits
-   for a slot; `busy` belongs to another session; `wait`, `skip` and `task`
-   (driven from the task's root repo) need nothing.
+1. `factory/bin/verify preflight`; BLOCKED → tell the user why in one line (jobs still run;
+   the local check needs it fixed). Then `job queue <sid>`: lines are `action issue job stage
+   note`. Start every `resume`, `retry` (`job retry <id>`, then **verify**) and `new` line (`new`
+   → `job create <n>`, then intake); `hold` waits for a slot; `busy` is another session's;
+   `wait`, `skip` and `task` (driven from the task's root repo) need nothing.
 2. Each time a job finishes, run the queue again and start what it allows.
 3. When nothing runs, `factory/bin/verify gc` (frees apps, ports, databases;
    the infra too if the factory started it), print `job summary` for the jobs
@@ -151,7 +150,7 @@ advance <id> intake`, then intake again.
 
 ## /software-factory run <n> [<n>...]
 
-The same for exactly these issues, without asking: resume, else `job create <n>`
+The same for exactly these issues, without asking: resume (or retry), else `job create <n>`
 (+ `--ref <path>` when the user named a local reference project; `--ref none` drops the default).
 
 ## /software-factory <anything>
@@ -164,6 +163,7 @@ Work out what the user wants (ask which job when unclear); state changes go thro
   `job feedback <n> <<'EOF' … EOF`, then **build** with `The user gave
   feedback: read feedback-<k>.md and address it, push, update build.md.`
 - **Reject** a waiting job: `job reject <n> <<'EOF' <reason> EOF`.
+- **Environment fixed** after a skipped local check: `job retry <n>`, then **verify**.
 - **Answer** to a `needs-info` question: post it on the issue in their words
   (`gh issue comment <n> --body …`), then `job advance <n> intake`.
 - **A new feature**: write a short issue (title, what, why, acceptance) from

@@ -18,6 +18,8 @@ Usage:
   job advance <job> <stage>      move a job to <stage>, or refuse (build → gate opens the draft PR)
   job merge <job>                APPROVE → sync with the base branch, gate, merge the PR
   job feedback <job>             needs-human → build, with your feedback (stdin) as feedback-<k>.md
+  job retry <job>                needs-human → verify, when the local check was skipped (VERIFY: SKIP)
+                                 and `verify preflight` passes now; same round, no rebuild
   job reject <job>               needs-info or needs-human → rejected, with your reason (stdin) as rejection.md
   job agents <job> <json>        record the routed agent set (called by factory/bin/route)
   job sync <job>                 refresh reviews, gate and cost from the job's files
@@ -71,7 +73,7 @@ TRANSITIONS = {
     "verify": {"approve", "build", "needs-human"},
     "approve": {"merging", "needs-human"},
     "merging": {"needs-human"},
-    "needs-human": {"build", "rejected"},
+    "needs-human": {"build", "verify", "rejected"},
 }
 TERMINAL = {"merged", "rejected"}
 # Any unfinished job can move to merged once its PR is merged on GitHub,
@@ -560,6 +562,23 @@ def cmd_task_result(job):
               else f"{svc} {j['id']}: refused: {(res.stderr or res.stdout).strip()}")
 
 
+def verify_skipped(job):
+    """The job escalated only because its local check couldn't run (on the commit it has now)."""
+    if job["stage"] != "needs-human" or not job["round"] or not job.get("pr"):
+        return False
+    vf = round_dir(job) / "verify.md"
+    if first_line(vf) != "VERIFY: SKIP" or not Path(job["worktree"]).exists():
+        return False
+    return header(vf).get("COMMIT") == git(job, "rev-parse", "HEAD", check=False).stdout.strip()
+
+
+def preflight():
+    """(ok, reasons) from `verify preflight`: can a local check run now?"""
+    res = subprocess.run([str(BIN / "verify"), "preflight"], capture_output=True, text=True)
+    lines = [l[2:] for l in res.stdout.splitlines() if l.startswith("- ")]
+    return res.returncode == 0, lines or [(res.stderr or res.stdout).strip()]
+
+
 def next_round(job):
     job["round"] += 1
     round_dir(job).mkdir(exist_ok=True)
@@ -723,6 +742,18 @@ def advance(job, stage):
         line = first_line(d / "decision.md")
         require(line == want, f"decision.md starts with {line!r}, not {want}")
 
+    elif old == "needs-human" and stage == "verify":
+        require(verify_skipped(job), f"{job['id']} didn't escalate because its local check was skipped "
+                                     "on its current commit; use `job feedback`")
+        ok, reasons = preflight()
+        require(ok, "the local check still can't run:\n" + "\n".join(f"- {r}" for r in reasons))
+        rd = round_dir(job)
+        k = len(list(rd.glob("verify-skipped-*.md"))) + 1
+        (rd / "verify.md").rename(rd / f"verify-skipped-{k}.md")
+        label("issue", job["issue"], remove=LABELS["needs_human"])
+        comment("pr", job["pr"], "### Factory: retrying the local check\n\nThe environment is ready now; "
+                                 "same commit, same round.")
+
     elif old == "needs-human":
         feedback = sorted(d.glob("feedback-*.md"))
         require(feedback and feedback[-1].stat().st_mtime > (d / "decision.md").stat().st_mtime,
@@ -826,6 +857,13 @@ def cmd_queue(owner=None):
                 replied_rows.append(("resume", n, j["id"], j["stage"], "author replied"))
             else:
                 other_rows.append(("wait", n, j["id"], j["stage"], "waiting for the author"))
+        elif j["stage"] == "needs-human" and verify_skipped(j):
+            ok, reasons = preflight()
+            if ok and not claim_holder(j, owner):
+                running_rows.append(("retry", n, j["id"], j["stage"], "local check skipped; the environment is ready now"))
+            else:
+                other_rows.append(("wait", n, j["id"], j["stage"], "local check skipped: " + reasons[0]
+                                   if not ok else "another session is working on it"))
         elif j["stage"] == "needs-human":
             other_rows.append(("wait", n, j["id"], j["stage"], f"merge PR #{j['pr']}, or give feedback"
                                if j["pr"] else "give feedback"))
@@ -966,6 +1004,11 @@ def cmd_feedback(job, text):
     print(f"{job['id']}: feedback-{k}.md, round {job['round']}")
 
 
+def cmd_retry(job):
+    save(advance(sync(job), "verify"))
+    print(f"{job['id']}: verify (round {job['round']}), local check again")
+
+
 def cmd_reject(job, text):
     if job["stage"] not in WAITING:
         die(f"{job['id']} is in {job['stage']}, not needs-info or needs-human")
@@ -1040,6 +1083,8 @@ def main(argv):
             cmd_merge(resolve(args[0]))
         elif cmd == "feedback" and len(args) == 1:
             cmd_feedback(resolve(args[0]), sys.stdin.read())
+        elif cmd == "retry" and len(args) == 1:
+            cmd_retry(resolve(args[0]))
         elif cmd == "reject" and len(args) == 1:
             cmd_reject(resolve(args[0]), sys.stdin.read())
         elif cmd == "agents" and len(args) == 2:
