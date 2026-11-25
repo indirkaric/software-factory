@@ -77,12 +77,12 @@ LOGIN="$(gh api user --jq .login)" || fail "the token can't read your GitHub use
 echo "    user: $LOGIN (git pushes and new repos go to this account)"
 "$HERE/lib/doctor.sh" --token-only || true
 
-PROJECTS="${PROJECTS:-$(sed -n 's/^PROJECTS_DIR=//p' "$CONF/config.env" 2>/dev/null)}"
+PROJECTS="${PROJECTS:-$(sed -n 's/^PROJECTS_DIR=//p' "$CONF/config.env" 2>/dev/null || true)}"
 PROJECTS="${PROJECTS:-$HOME/Desktop/projects}"
 if [[ -t 0 ]]; then read -rp "==> folder for your projects [$PROJECTS]: " p; PROJECTS="${p:-$PROJECTS}"; fi
 PROJECTS="${PROJECTS/#\~/$HOME}"; mkdir -p "$PROJECTS"
-DEV="$(sed -n 's/^DEV_REPO=//p' "$CONF/config.env" 2>/dev/null)"; DEV="${DEV:-development}"
-PACKAGE="${PACKAGE:-$(sed -n 's/^BASE_PACKAGE=//p' "$CONF/config.env" 2>/dev/null)}"
+DEV="$(sed -n 's/^DEV_REPO=//p' "$CONF/config.env" 2>/dev/null || true)"; DEV="${DEV:-development}"
+PACKAGE="${PACKAGE:-$(sed -n 's/^BASE_PACKAGE=//p' "$CONF/config.env" 2>/dev/null || true)}"
 # default: com.<machine user>, else com.<GitHub login> (the same rule as new_service.py)
 PACKAGE="${PACKAGE:-$(python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import new_service as n; print(n.default_prefix(sys.argv[2]))' "$HERE/templates/java/scripts" "$LOGIN")}"
 if [[ -t 0 ]]; then read -rp "==> base package of new services (<package>.<service>) [$PACKAGE]: " p; PACKAGE="${p:-$PACKAGE}"; fi
