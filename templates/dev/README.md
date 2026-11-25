@@ -1,27 +1,97 @@
 # development
 
-Local infrastructure for the platform: Postgres, Keycloak, LocalStack (AWS) and, on demand,
-Azurite and Redis. Every Java service made with the software factory registers itself here.
+Local infrastructure for the platform, with Docker Compose. You start exactly the containers
+you name and stop them the same way. Every Java service made with the software factory
+registers itself here.
 
-## Start
+## What you can start
+
+| Name | What | Address on your machine | Login |
+|---|---|---|---|
+| `db` | Postgres 16 | `localhost:5432` | `postgres` / `postgres` |
+| `auth` | Keycloak 24 (realm `factory`) | http://localhost:8080 | admin console `admin` / `admin` |
+| `aws` | LocalStack: S3, SQS, SES | http://localhost:4566 | keys `test` / `test`, region `eu-west-1` |
+| `redis` | Redis 7 | `localhost:6379` | none |
+| `azurite` | Azure Storage emulator | `localhost:10000-10002` | default Azurite account |
+| `<service>` | a Java service from `../<service>` | its port in `platform.md` | Keycloak token |
+
+Inside Docker they reach each other as `database.factory.local`, `auth.factory.local`,
+`aws.factory.local`, `redis.factory.local`, `azure.factory.local`, `<service>.factory.local`.
+
+## Once per machine
+
+Start Docker (Rancher Desktop), then:
 
 ```bash
-./scripts/install-aliases.sh   # once: dev-* commands in every new terminal
-dev-hosts                      # once: *.factory.local -> 127.0.0.1 (sudo)
-dev-up                         # Postgres :5432, Keycloak :8080, LocalStack :4566 (ports in .env)
+./scripts/install-aliases.sh   # dev-* commands in every new terminal (open a new one after)
+dev-hosts                      # *.factory.local -> 127.0.0.1 in /etc/hosts (sudo)
 ```
 
-`dev-help` lists every command. Keycloak admin console: http://localhost:8080 (`admin`/`admin`).
+`dev-hosts` only adds its own block between `# >>> factory development >>>` markers and
+rewrites only that block on the next run; every other line of `/etc/hosts` stays as it is.
+
+## Start and stop with docker compose
+
+Run these in this folder (`.env` makes `docker compose` use all three compose files).
+
+```bash
+docker compose up -d db auth             # Postgres + Keycloak
+docker compose up -d redis aws           # add more later, any time
+docker compose up -d                     # everything, including every Java service
+docker compose ps                        # what runs, and whether it is healthy
+docker compose logs -f auth              # follow one container's logs
+```
+
+```bash
+docker compose stop auth                 # stop one, keep it for a later start
+docker compose stop                      # stop everything, keep the containers
+docker compose down                      # stop and remove the containers; data stays
+```
+
+> **Never `docker compose down -v`** unless you want a clean slate: `-v` deletes every local
+> database, Keycloak's state and Redis. `dev-reset` does the same, after asking.
+
+Keycloak needs 30-60 s after start; `docker compose up -d --wait db auth` returns only when
+both are healthy.
+
+### Common sets
+
+| You work on | Start |
+|---|---|
+| A service from the IDE | `docker compose up -d db auth` (+ `aws` / `redis` if it uses them) |
+| Only the database | `docker compose up -d db` |
+| One service in Docker | `dev-run invoice` (builds the jar and the image first) |
+| The whole platform | `dev-up-all` |
+
+## The same with dev-* aliases
+
+| Command | Does |
+|---|---|
+| `dev-up [svc..]` | `db auth aws` (+ the services named), waits for healthy, applies the realm's permissions |
+| `dev-up-all` | everything, waits for healthy |
+| `dev-run <svc>` | `mvn package ../<svc>`, build its image, start it |
+| `dev-redis` / `dev-azure` | start Redis / Azurite |
+| `dev-stop <svc>` | stop one container |
+| `dev-down` | stop everything, data kept |
+| `dev-reset` | remove everything **and delete all data** (asks first) |
+| `dev-ps` / `dev-logs [svc]` | what runs / follow logs |
+| `dev-psql [db]` | psql as `postgres` |
+| `dev-token [user]` / `dev-curl <url>` | access token / curl with one (`DEV_USER=manager dev-curl ...`) |
+| `dev-s3 <args>` | `aws s3` against LocalStack (bucket `factory-local`) |
+| `dev-help` | this list |
+
+The aliases work from any folder. Use `dev-up` rather than a plain `docker compose up` after
+the realm changed (new permissions): it re-applies `factory-realm.json` to Keycloak.
 
 ## Run a service
 
 ```bash
-dev-run invoice                # mvn package ../invoice, build the image, start it
-dev-curl http://localhost:50001/invoice/v1/...   # with an admin token
+dev-run invoice                                  # in Docker
+dev-curl http://localhost:50001/invoice/v1/...   # call it with an admin token
 ```
 
-Or start it from the IDE (`mvn spring-boot:run` in the service): it reaches the infrastructure
-through the `*.factory.local` names.
+Or start it from the IDE (`mvn spring-boot:run` in `../invoice`) with `db` and `auth` up: it
+reaches them through the `*.factory.local` names.
 
 ## Test users and permissions
 
@@ -49,7 +119,18 @@ Keycloak, `dev-up` re-applies it after every start. The software factory syncs a
 
 ## Ports
 
-Another stack on 5432/8080/4566? Set `DB_PORT`, `AUTH_PORT`, `AWS_PORT` in `.env`.
+Another stack already on 5432/8080/4566/6379? Set `DB_PORT`, `AUTH_PORT`, `AWS_PORT`,
+`REDIS_PORT` in `.env`; nothing else needs to change.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `Cannot connect to the Docker daemon` | start Rancher Desktop |
+| `auth` stays `starting` | wait a minute; `docker compose logs -f auth` |
+| A service can't resolve `*.factory.local` from the IDE | `dev-hosts` |
+| New permission missing in tokens | `dev-up` (re-applies the realm) |
+| A new database from `dev-add` is missing | the init script runs on an empty volume only; `dev-add` creates it in a running Postgres, so start `db` and run it again |
 
 ## Add a service by hand
 
