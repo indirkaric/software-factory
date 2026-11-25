@@ -51,7 +51,13 @@ APPROVE only if all of these hold:
   `VERDICT: PASS`, and no Note in them describes a real problem.
 - The change stays inside intake's Scope.
 - The final round's `verify.md` says `VERIFY: PASS`: the branch booted locally
-  and the calls returned what the spec says.
+  and the calls returned what the spec says. Its `## Proof` has a ✅ block
+  (request body, status, response body) for every step of the spec's
+  `## Local check`, and the response bodies really show what each acceptance
+  criterion promises. A missing step or a vague block is an ESCALATE.
+- Every class with logic the branch adds or changes has a unit test that
+  asserts the new behaviour (spot-check two), and `checks.md` shows
+  `mvn verify` passing with the test count.
 
 ESCALATE if any of them fails, or if the change:
 
@@ -87,7 +93,11 @@ APPROVE | ESCALATE
 Two or three sentences.
 
 ## Acceptance criteria
-1. <criterion>: met / not met, and how you know
+1. <criterion>: met / not met, and how you know (the test, or the Proof step)
+
+## Proof
+The request → response pairs from verify.md that show the ticket working,
+copied as they are (the most telling ones, at most five).
 
 ## For the human
 Only when you escalate: the exact decision or check you need from them, and the

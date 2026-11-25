@@ -16,6 +16,16 @@ public final class Constants {
 
     public static final int LIMIT_PAGE_SIZE = 2000;
 
+    /** Page size when the request has no {@code size}. */
+    public static final int DEFAULT_PAGE_SIZE = 50;
+
+    /** Length of a generated public entity id. */
+    public static final int DEFAULT_ENTITY_ID_SIZE = 7;
+
+    public static final int MAX_NAME_LENGTH = 255;
+
+    public static final int MAX_DESCRIPTION_LENGTH = 1000;
+
     public static final String BEARER_KEY_VALUE = "bearer-key";
 
     public static final String SECURITY_SCHEME = "bearer";
@@ -35,6 +45,19 @@ public final class Constants {
     public static final Set<String> TRUSTED_CLIENTS = Set.of(UI_CLIENT);
 
     private Constants() {
+    }
+
+    /**
+     * Row status values.
+     */
+    public static final class Status {
+
+        public static final short INACTIVE = 0;
+
+        public static final short ACTIVE = 1;
+
+        private Status() {
+        }
     }
 
     /**

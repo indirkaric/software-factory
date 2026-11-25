@@ -33,6 +33,12 @@ PERSISTENCE_ONLY = [
     "src/main/java/ROOT/service/audit",
     "src/test/java/ROOT/service/audit",
     "src/main/resources/liquibase",
+    "src/main/java/ROOT/util/SortHelper.java",
+    "src/test/java/ROOT/util/SortHelperTest.java",
+] + [  # the reference module: {{Domain}} from entity to controller
+    f"src/{kind}/java/ROOT/{rel}" for kind in ("main", "test") for rel in (
+        "repository", "mapper", "modules", "service/validator", "service/generator", "service/{{domain_package}}",
+        "service/model/{{Domain}}ListFilter.java", "dto/{{Domain}}DTO.java")
 ]
 # Template-only Claude files that must not land in a generated service.
 TEMPLATE_ONLY = [
@@ -92,8 +98,8 @@ def parse_args():
 
     if not NAME.match(args.name):
         sys.exit(f"--name must be kebab-case: {args.name}")
-    if not re.match(r"^[A-Z][A-Za-z0-9]*$", args.domain):
-        sys.exit(f"--domain must be PascalCase: {args.domain}")
+    if not re.match(r"^[A-Z][A-Za-z0-9]{0,19}$", args.domain):
+        sys.exit(f"--domain must be PascalCase, at most 20 characters: {args.domain}")
     if not re.match(r"^0(\.\d+)?$|^1(\.0+)?$", args.coverage) or float(args.coverage) < 0.80:
         sys.exit(f"--coverage must be between 0.80 and 1: {args.coverage}")
     snake = args.name.replace("-", "_")
@@ -198,7 +204,24 @@ def placeholders(args):
         "{{coverage}}": args.coverage,
         "{{Domain}}": args.domain,
         "{{domain}}": args.domain[0].lower() + args.domain[1:],
+        "{{domain_table}}": snake_case(args.domain),
+        "{{domain_package}}": snake_case(args.domain),
+        "{{domain-path}}": plural(snake_case(args.domain).replace("_", "-")),
     }
+
+
+def snake_case(pascal):
+    """PurchaseOrder -> purchase_order."""
+    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", pascal).lower()
+
+
+def plural(word):
+    """purchase-order -> purchase-orders, category -> categories, box -> boxes."""
+    if re.search(r"[^aeiou]y$", word):
+        return word[:-1] + "ies"
+    if re.search(r"(s|x|z|ch|sh)$", word):
+        return word + "es"
+    return word + "s"
 
 
 def fill(text, values):

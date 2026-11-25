@@ -1,46 +1,65 @@
 ---
 name: controller-conventions
-description: Use when creating or modifying a REST Controller in this repo — endpoint annotations, status codes, and the final-method CGLIB gotcha.
+description: Use when creating or modifying a REST Controller in this repo — endpoint annotations, request binding and normalization, status codes, and the final-method CGLIB gotcha.
 ---
 
-Full detail for the `<Domain>Controller` layer referenced by `CLAUDE.md`'s
-package layout. Read `CLAUDE.md` first for the placeholders and the
-overall map.
+The reference is the skeleton's `modules/{{domain_package}}/{{Domain}}Controller` and its
+`{{Domain}}ControllerTest`.
 
-## Controllers
+## Shape
 
-- `modules/<domain>/<Domain>Controller.java`, `@RestController`,
-  `@RequestMapping(path = {"/{{api-prefix}}/v1/<plural>"}, produces =
-  MediaType.APPLICATION_JSON_VALUE)`, `@Tag(name = "...", description =
-  "...")`. The service prefix lives in the mapping — there is no
-  `server.servlet.context-path`.
-- Every endpoint: full Javadoc, `@Operation(..., security =
-  {@SecurityRequirement(name = Constants.BEARER_KEY_VALUE)})` +
-  `@ApiResponses` (+ `@Parameters` for query params),
-  `@PreAuthorize(Constants.Authority.X_Y_AUTHORITY)`,
-  `@Valid @RequestBody` for bodies, `Check.*` on every parameter, delegate
-  to exactly one `*ResponseCreatorService` (or a bare operation service for
-  delete), wrap the result in `ResponseEntity` with the right status
-  (`201` create, `200` read/update, `204` delete or empty list, `404`/
-  `422` documented in `@ApiResponses` even though they're thrown, not
-  returned, from this method).
-- **No generic response envelope.** Create returns
-  `ResponseEntity<EntityCreatedResponse>` (`dto/response/EntityCreatedResponse(String id)`);
-  a list returns a per-module `<Domain>ListResponse` record with exactly
-  `List<<Domain>ItemResponse> data` + `long count`. Pagination is Spring
-  Data `Pageable` with `@PageableDefault(size = Constants.LIMIT_PAGE_SIZE)`;
-  list filters go in a `<Domain>ListRequest` body, not in a dozen query
-  params.
-- Class members are `final` wherever the language allows it — but
-  controller **methods are never `final`**: Spring's method-security proxy
-  (CGLIB) must be able to override them to route through `@PreAuthorize`
-  interception; a `final` method breaks that and produces an NPE on every
-  injected field the moment the endpoint is actually called (not caught by
-  `mvn test` with mocks, only on live traffic, since method-security
-  proxies are only built for the real Spring context). This has been the
-  root cause of real incidents across multiple services built on this
-  exact convention. Same reason a `@Transactional` class is never `final`.
-- The Controller imports nothing from `entity`, `repository`, `mapper` or
-  internal `dto` packages — only its module's `model/`,
-  `dto/response/EntityCreatedResponse`, and `*ResponseCreatorService` (or,
-  for a pure proxy module, the operation Service it calls directly).
+- `modules/<domain_package>/<Domain>Controller.java` (`<domain_package>` is snake_case:
+  `purchase_order`), `@RestController`,
+  `@RequestMapping(path = {"/{{api-prefix}}/v1/<plural-kebab>"}, produces = APPLICATION_JSON_VALUE)`,
+  `@Tag`. No `server.servlet.context-path`: the prefix is in the mapping.
+- Per endpoint: Javadoc with `Designed for extension.`, `@Operation(summary, security =
+  @SecurityRequirement(name = Constants.BEARER_KEY_VALUE))`, `@ApiResponses` listing every status
+  it can produce (also the thrown 400/404/422, with `RestApiResponse`/`BusinessExceptionResponse`
+  schemas), `@PreAuthorize(Constants.Authority.…)` or a new scope, and a `ResponseEntity<T>`.
+- Method body, always in this order: `Check` every parameter →
+  `CustomFieldProcessor.processAnnotatedFields(request)` for every request model → one service
+  call → wrap in `ResponseEntity`.
+
+## Who the controller calls
+
+- Reads (`GET` list and detail) → a `*ResponseCreatorService` in the module, which composes the
+  read service and the mapper into the API model.
+- Writes that return only an id or nothing (`POST` → `EntityCreatedResponse`, `PUT`/`DELETE` →
+  204) → the operation service (`ICreate…`, `IModify…`, `IDelete…`) directly. A write that must
+  answer with a composed body goes through a response creator too.
+- Never a repository, entity, mapper or internal `dto` type.
+
+## Request binding
+
+- Bodies: `@Valid @RequestBody` on a Lombok `@Data` class (not a record: the field processor
+  mutates it). Field rules are `jakarta.validation` annotations with a `message` and constants
+  for sizes (`@Size(max = Constants.MAX_NAME_LENGTH)`); a violation is a 400 with
+  `{"messages": ["name: Name is required."]}`.
+- Normalization annotations from `annotations/`: `@Trimmed` (trim + collapse spaces),
+  `@Uppercase`, `@Lowercase`, `@UppercaseList` (ids).
+- List filters are **query parameters** bound to a `<Domain>ListRequest` class with
+  `@ParameterObject`, plus `@ParameterObject @PageableDefault(size = Constants.DEFAULT_PAGE_SIZE)
+  Pageable` (`?page=0&size=50&sort=name,desc`). Never a body on `GET`.
+- Path ids: `@PathVariable("id") String id`, passed on as `id.toUpperCase(Locale.ROOT)` (generated
+  ids are upper-case).
+
+## Responses
+
+- No generic envelope. `201` + `EntityCreatedResponse(id)`; `200` + `<Domain>Response` record;
+  list `200` + `<Domain>ListResponse(List<<Domain>ItemResponse> data, long count)`, or `204`
+  when `data` is empty; `PUT`/`DELETE` `204`.
+- `entityId` is exposed as `id`; the database id never leaves the service.
+- Errors are thrown, never built here: `EntityNotFoundException` 404, `BusinessException` 422,
+  `IllegalArgumentException` (from `Check`, `SortHelper`) 400.
+
+## Never `final`
+
+Controller methods are never `final`: Spring's method-security proxy (CGLIB) must override them
+for `@PreAuthorize`. A `final` method NPEs on every injected field on live traffic only, which
+mocked unit tests never show. Same reason a `@Transactional` class is never `final`.
+
+## Test
+
+`<Domain>ControllerTest`: standalone MockMvc with `GlobalExceptionHandler` and
+`PageableHandlerMethodArgumentResolver`, one test per status the endpoint documents, asserting the
+JSON response body for the given JSON request body (see `testing-conventions`).

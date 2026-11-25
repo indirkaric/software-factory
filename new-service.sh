@@ -112,7 +112,8 @@ PY
 fi
 
 ROLE=persistence; [[ "$KIND" == proxy ]] && ROLE=proxy
-DOMAIN="${DOMAIN:-$(python3 -c 'import sys; print("".join(w.capitalize() for w in sys.argv[1].split("-")))' "$NAME")}"
+# Default domain: the name in PascalCase, or its last word when that is over 20 characters.
+DOMAIN="${DOMAIN:-$(python3 -c 'import sys; w = [x.capitalize() for x in sys.argv[1].split("-")]; d = "".join(w); print(d if len(d) <= 20 else w[-1][:20])' "$NAME")}"
 step "generate $NAME ($ROLE, domain $DOMAIN${CALLS:+, calls $CALLS})"
 PKG="$(cfg BASE_PACKAGE)"
 ARGS=(--name "$NAME" --role "$ROLE" --domain "$DOMAIN" --target "$TARGET" --registry "$REG")

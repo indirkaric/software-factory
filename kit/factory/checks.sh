@@ -39,3 +39,23 @@ for value in mins:
         sys.exit(f"checks: JaCoCo minimum {value} is below 0.80")
 print(f"checks: coverage floor ok ({', '.join(mins)})")
 PY
+
+# Tests ship with the code: every class with logic the branch adds (service, validator, response
+# creator, controller, client, filter, helper) needs its <Class>Test next to it under src/test/java.
+python3 - "$(dirname "$0")/config.json" <<'PY'
+import json, re, subprocess, sys
+from pathlib import Path
+base = json.load(open(sys.argv[1], encoding="utf-8")).get("base_branch", "main")
+mb = subprocess.run(["git", "merge-base", "HEAD", f"origin/{base}"], capture_output=True, text=True)
+if mb.returncode != 0:
+    sys.exit(0)  # no base to compare with (a fresh repo): nothing was added on a branch
+added = subprocess.run(["git", "diff", "--name-only", "--diff-filter=A", mb.stdout.strip(), "HEAD",
+                        "--", "src/main/java"], capture_output=True, text=True, check=True).stdout.split()
+logic = re.compile(r"/(service|modules|client|security|util|processor|annotations/validator)/")
+data = re.compile(r"(/model/|/I[A-Z]\w*\.java$|package-info\.java$|Constants\.java$)")
+missing = [f for f in added if logic.search(f) and not data.search(f) and not
+           Path(f.replace("src/main/java", "src/test/java", 1)[:-len(".java")] + "Test.java").exists()]
+if missing:
+    sys.exit("checks: classes added without their unit test:\n" + "\n".join(f"  {f}" for f in missing))
+print(f"checks: every added class with logic has a test ({len(added)} added files)")
+PY

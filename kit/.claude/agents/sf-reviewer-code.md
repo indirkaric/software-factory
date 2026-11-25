@@ -53,8 +53,10 @@ re-run the build. Run a command yourself only to confirm a specific finding
 
 - **Conventions** (the BLOCK and WARNING lists above): `Check` first in every
   constructor and public method; nothing proxied is `final`; one interface per
-  operation, validator called first; the controller depends only on
-  `*ResponseCreatorService`; entity/repository/mapper/dto never under
+  operation, validator before any change; reads go through a
+  `*ResponseCreatorService`, never a repository from the controller;
+  queries use the Criteria API with the metamodel and the reference
+  module's shapes (`PagedList`, `SortHelper`); entity/repository/mapper/dto never under
   `modules/`; business rules throw `BusinessException`, missing lookups
   `EntityNotFoundException`; read services are `readOnly = true`; every new
   package has `package-info.java`; Javadoc and `@Operation`/`@ApiResponses`/

@@ -2,7 +2,8 @@
 
 > **Fill these in** — only when setting this template up by hand; `scripts/new_service.py` fills
 > them and removes this note: `{{ServiceName}}`, `{{service-name}}`, `{{Domain}}`/`{{domain}}`,
-> `{{port}}`, `{{schema}}`, `{{api-prefix}}`, `{{coverage}}`.
+> `{{port}}`, `{{schema}}`, `{{api-prefix}}`, `{{coverage}}`, `{{domain_package}}`,
+> `{{domain-path}}`.
 
 Spring Boot 3.2 / Java 17 microservice, one per repo. The architecture below is
 **non-negotiable**; each layer's detail lives in one skill (table at the end), loaded only when
@@ -12,28 +13,49 @@ deviate only after calling it out.
 ## Package layout
 
 Entities, repositories, mappers and DTOs are root-level and shared; a module holds exactly three
-things. Every package has a `package-info.java`. Spell `config/` and `annotations/` this way.
+things. Every package has a `package-info.java`; domain packages are snake_case
+(`purchase_order`). Spell `config/` and `annotations/` this way.
 
 ```
-entity/<Entity>.java  entity/common/  entity/listener/BaseEntityListener
-repository/I<Domain>Repository + impl/<Domain>Repository + projection/<Domain>Projection
-mapper/I<Domain>Mapper                         MapStruct
+entity/<Entity>  entity/common/(Internal|Audit|External)Entity  entity/listener/BaseEntityListener
+repository/I<Domain>Repository  impl/<Domain>Repository (Criteria API + <Entity>_ metamodel)
+repository/projection/<Domain>Projection, <Domain>ItemProjection     records
+mapper/I<Domain>Mapper                         MapStruct: projection → dto → model
 dto/<Domain>DTO  dto/response/EntityCreatedResponse
-service/<domain>/I<Verb><Domain>Service + impl/     ONE interface per operation
+service/<domain_package>/I<Domain>Service (reads) ICreate|IModify|IDelete<Domain>Service + impl/
 service/validator/I<Verb><Domain>ServiceValidator + impl/   + Base<Domain>DataValidator
+service/model/PagedList<T>(items, count)  <Domain>ListFilter
+service/generator/IEntityIdGeneratorService    public entity ids
 service/security/  service/bean/  service/audit/
+annotations/@Trimmed @Uppercase @Lowercase @UppercaseList   util/CustomFieldProcessor applies them
+util/Check  util/SortHelper (orders, LIKE escaping)  util/StringHelper
 client/BaseClient  client/<downstream>/<Downstream>Client
-config/  security/  exception/  constants/  util/  db/config|model|constants
-modules/<domain>/
+config/  security/  exception/  constants/  db/config|model|constants
+modules/<domain_package>/
   <Domain>Controller
-  model/                                       API request/response records
-  service/I<Verb><Domain>ResponseCreatorService + impl/
+  model/          Create|Modify<Domain>Request, <Domain>ListRequest (classes); responses (records)
+  service/I<Domain>ResponseCreatorService, I<Domain>ListResponseCreatorService + impl/
 event/                                         optional, see domain-events-conventions
 ```
 
-The Controller depends only on `*ResponseCreatorService` (or a bare operation service for a
-body-less operation like delete) — never on a repository, entity, mapper or internal DTO. A
-module without local persistence follows `proxy-bff-conventions`.
+**The reference module.** The service was generated with one complete module for its first
+domain, `{{Domain}}` (`modules/{{domain_package}}/` and everything under it at the root, with a
+test per class). It is the canonical flow, controller to repository:
+
+```
+GET    /{{api-prefix}}/v1/{{domain-path}}?ids&status&textSearch&page&size&sort
+       Controller → ListResponseCreator → I{{Domain}}Service → Repository (Criteria: count + page) → 200 | 204
+GET    /{id}   Controller → ResponseCreator → I{{Domain}}Service → findProjectionByEntityId → 200 | 404
+POST   /       Controller → ICreate…Service → validator → id generator → save → 201 {"id"} | 400 | 422
+PUT    /{id}   Controller → IModify…Service → load (404) → validator → set fields → 204 | 400 | 422
+DELETE /{id}   Controller → IDelete…Service → load (404) → validator → delete → 204 | 422
+```
+
+Copy it for a new module (`new-crud-module`); rename or delete it when the domain turns out
+different. Reads go through a `*ResponseCreatorService`; a write that returns only an id or
+nothing calls its operation service directly. The controller never touches a repository,
+entity, mapper or internal DTO. A module without local persistence follows
+`proxy-bff-conventions`.
 
 ## Non-negotiable
 
@@ -42,7 +64,7 @@ module without local persistence follows `proxy-bff-conventions`.
   A missing call is a review blocker.
 - **Nothing proxied is `final`**: controller methods (`@PreAuthorize`) and `@Transactional`
   classes are CGLIB-proxied; `final` breaks them on live traffic only.
-- **Tests ship with the change**; `mvn verify` (also in GitHub Actions on every push) runs them plus the JaCoCo gate
+- **Tests ship with the change**, one test class per class with logic; `mvn verify` (also in GitHub Actions on every push) runs them plus the JaCoCo gate
   (`{{coverage}}` instruction coverage) and checkstyle.
 - **Checkstyle** (`src/main/resources/checkstyle/`, from identity — the stricter one): Javadoc
   on public members, `Designed for extension.` in the Javadoc of overridable public methods,

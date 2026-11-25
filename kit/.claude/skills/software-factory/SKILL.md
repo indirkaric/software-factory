@@ -33,12 +33,12 @@ gate, merge). If it refuses, another session owns that job: leave it alone, say 
 ```
 intake (opus)        ACCEPT | NEEDS-INFO | REJECT, posted on the issue; risk + surfaces
 route (script)       reviewers + models from config.json
-spec-writer (opus)   spec.md: files to touch, acceptance criteria
-builder (opus)       code + unit tests in .worktrees/<id>, commits, pushes branch factory/<id>
-gate (script)        checks.sh = mvn -o clean verify; the first PASS opens the draft PR
+spec-writer (opus)   spec.md: files to touch, acceptance criteria, Local check requests
+builder (opus)       code + unit tests (mandatory) in .worktrees/<id>, pushes factory/<id>
+gate (script)        checks.sh = mvn -o clean verify + a test per added class; PASS opens the PR
 reviewers            code always; api / db / integration / security by surface; WAIT FOR ALL
-verifier (sonnet)    once per task: boots every job's branch + their callers locally on the
-                     development stack, runs the flow + smoke → VERIFY: PASS | FAIL | SKIP
+verifier (sonnet)    once per task: boots the branches + callers on the development stack, runs
+                     the flow + smoke, ## Proof = request → response per step; PASS | FAIL | SKIP
 approver (opus)      APPROVE → job merge: sync base, gate again, PR ready, wait for GitHub
                      Actions, squash-merge (auto_merge). ESCALATE → needs-human
 ```
@@ -109,9 +109,9 @@ told it is resuming. Report one line per transition, e.g.
   task's other jobs. `TASK: blocked <service> <stage>` → tell the user; the
   task's jobs are done for this run. `TASK: verify` → spawn one `sf-verifier` for the task,
   with the header of the root job (last row) and `Verify round <N>.`, then
-  `job task-result <id>`: it advances each job and prints its new stage.
-  `approve` → spawn `sf-approver` with `<header> PR: #<pr>. Final round:
-  <N>.`; `build` → resume its builder: `The local check failed: read
+  `job task-result <id>`: it advances each job, posts the proof on the PR and prints its new
+  stage. `approve` → show the user the `## Proof` of `round-<N>/verify.md` (request body →
+  status, response body per step), spawn `sf-approver` with `<header> PR: #<pr>. Final round: <N>.`; `build` → resume its builder: `The local check failed: read
   round-<N-1>/verify.md, fix it, push, update build.md.`; `needs-human` → tell
   the user (on SKIP: what to free or start; once fixed, `job retry` re-checks the
   same commit, no rebuild); unchanged → waits for the next check.
@@ -137,9 +137,9 @@ Show `gh issue list --label factory --state open` and `job summary`.
    → `job create <n>`, then intake); `hold` waits for a slot; `busy` is another session's;
    `wait`, `skip` and `task` (driven from the task's root repo) need nothing.
 2. Each time a job finishes, run the queue again and start what it allows.
-3. When nothing runs, `factory/bin/verify gc` (frees apps, ports, databases;
-   the infra too if the factory started it), print `job summary` for the jobs
-   this run touched, and list what waits on the user (`needs-human`, `needs-info`).
+3. When nothing runs, `factory/bin/verify gc` (frees apps, ports, databases; the infra too if
+   the factory started it), print `job summary` for the jobs this run touched, per job that
+   passed the local check its proof (request → response per step), and what waits on the user.
 
 **Resuming** (state is in files; for a task, every job `job task` lists):
 `intake`, `spec`, `approve` respawn their agent; `build` spawns a builder told

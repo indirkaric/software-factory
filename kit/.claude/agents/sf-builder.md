@@ -78,11 +78,15 @@ other jobs.
   branch from your prompt. If it doesn't, stop and write a BLOCKED build.md.
 - Match the surrounding code: its idioms, naming, Javadoc and imports. Open a
   sibling class of the same kind before writing a new one and copy its shape.
+- The service's reference module (CLAUDE.md, `new-crud-module`) is the shape
+  of every layer: Criteria repository with projections and `PagedList`,
+  validators, one service per operation, response creators for reads, the
+  controller's request normalization. Copy from it before anything else.
 - The rules reviewers block on: `Check` first in every constructor and public
   method; nothing proxied is `final`; one interface per operation; the
-  operation service's first line is its validator; the controller depends only
-  on `*ResponseCreatorService`; entities, repositories, mappers and DTOs live at
-  the root, never under `modules/`; every new package has `package-info.java`.
+  validator runs before any change; the controller never touches a repository,
+  entity, mapper or DTO; entities, repositories, mappers and DTOs live at the
+  root, never under `modules/`; every new package has `package-info.java`.
 - Liquibase: a new numbered file in `liquibase/changes/`, included from
   `changelog.xml`, with a rollback per changeset. Never edit an existing changeset.
 - A new permission (`READ-INVOICE`): a constant in `Constants.ApiScopes`, the
@@ -93,8 +97,6 @@ other jobs.
 - Other services only through `platform.md`, `task.md`'s contract and
   `BaseClient`; never read a sibling repo (task.md and the spec's `reference`
   files excepted) and never edit one.
-- Never change a port or a base URI to make the local check pass: the factory
-  gives every app its own.
 - Every feature must work when the service runs: the factory boots your branch
   (with the task's other services and their callers) against the local
   Postgres/Keycloak/LocalStack and calls the endpoints in the spec's
@@ -102,7 +104,8 @@ other jobs.
   startup goes in `application.yaml` with a working local default.
 - Markdown files you write or change stay under 200 lines.
 - Make the simplest change that fully meets the spec. No fallbacks, hidden
-  defaults or extras the spec doesn't ask for.
+  defaults or extras the spec doesn't ask for. Never change a port or a base
+  URI to make the local check pass.
 - Never modify or delete an existing file that matches `protected_paths` in
   `factory/config.json` (the factory files and the checkstyle config); the gate
   fails the branch if you do. Never lower the JaCoCo threshold (the gate refuses
@@ -111,8 +114,10 @@ other jobs.
 
 ## Test
 
-Write the unit tests per `testing-conventions` for every class you added or
-changed. Iterate with `cd <worktree> && mvn -o -q test -Dtest=<Class>` and
+Unit tests and a passing build are mandatory. Write the tests per
+`testing-conventions` for every class you added or changed; `checks.sh` fails
+the branch when an added class with logic has no `<Class>Test`. A controller
+test sends each request body and asserts each status and response body. Iterate with `cd <worktree> && mvn -o -q test -Dtest=<Class>` and
 `mvn -o -q checkstyle:check`. Then run the full checks exactly as the gate will:
 
 ```bash
@@ -125,9 +130,9 @@ offline Maven cache, run `cd <worktree> && mvn -q dependency:go-offline` once
 and retry; adding a dependency means the approver will escalate, so do it only
 when the spec requires it.
 
-Then verify every acceptance criterion and record the evidence in build.md: the
-command you ran and its result. Never run a command that rewrites files across
-the repo, such as a formatter over every file.
+Then verify every acceptance criterion and record the evidence in build.md (the
+command and its result). Never run a formatter or anything that rewrites files
+across the repo.
 
 ## Commit and push
 
@@ -135,8 +140,7 @@ the repo, such as a formatter over every file.
   the issue number, e.g. `Accept non-streaming chat responses (#12)`. One commit per distinct piece of work.
 - Stage explicit paths, never `git add -A`. Leave the tree clean: `git status
   --porcelain` should print nothing when you finish (`target/` is gitignored).
-- Push with `git push -u origin <branch>`. Push only the job branch, never
-  anything else.
+- Push only the job branch: `git push -u origin <branch>`.
 - Don't open the pull request: `factory/bin/job` opens it as a draft on
   GitHub from your pushed branch and build.md's Summary. Once it exists, just
   push; the PR updates itself. Never touch the PR, never push to the base
@@ -153,22 +157,25 @@ STATUS: READY
 # Build: <spec title>
 
 ## Summary
-- 3 to 5 short bullets: what the branch does now and what this round changed
+- 3 to 5 short bullets a human can skim: what the branch does, what this round changed
 
 ## Changes
 The files changed and what each change does, grouped by layer.
 
 ## Endpoints
-Method, path, status, authority for every endpoint added or changed. Omit when
-none.
+Method, path, status, authority for every endpoint added or changed, each with
+an example request body and the response it returns. Omit when none.
+
+## Tests
+Each test class added or changed and the cases it covers.
 
 ## Acceptance criteria
 1. [x] <criterion>: <evidence>
 2. [x] ...
 
 ## Validation
-The commands you ran and whether each one passed, including the test count and
-coverage from `mvn verify`.
+The commands you ran and whether each one passed, including the test count,
+coverage and checkstyle result from `checks.sh`.
 
 ## Log
 ### Round <N>
@@ -176,8 +183,6 @@ What you did this round. On rounds after the first, list each gate failure or
 review finding and what you did about it, or why you didn't change anything.
 ```
 
-`## Summary` is 3 to 5 short bullets a human can skim on the dashboard. The
-detail goes in the sections below it.
 
 Write `STATUS: BLOCKED` on the first line instead when you can't meet the spec:
 it contradicts itself or CLAUDE.md, it needs a decision only a human can make

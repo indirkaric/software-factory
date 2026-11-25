@@ -1,88 +1,80 @@
 ---
 name: service-layer-conventions
-description: Use when creating or modifying the business/API layer above the repository — operation services split by verb, validators, the ResponseCreatorService seam, the MapStruct mapper, or deciding dto vs model placement.
+description: Use when creating or modifying the layer between the repository and the controller — operation services split by verb, validators, the ResponseCreatorService seam, PagedList, entity id generation, the MapStruct mapper, or deciding dto vs model placement.
 ---
 
-Full detail for everything between the repository and the controller,
-referenced by `CLAUDE.md`'s package layout. Read `CLAUDE.md` first for the
-placeholders and the overall map.
+The reference is the skeleton's `{{Domain}}` module: `service/{{domain_package}}/`,
+`service/validator/`, `mapper/I{{Domain}}Mapper`, `dto/{{Domain}}DTO`,
+`modules/{{domain_package}}/service/`. Copy its shape, rename, then adapt.
 
-## Service layer: split by operation, not by entity
+## The flow
 
-Do not write one `{{Domain}}Service` with `create/update/delete/get`
-methods. Split into:
+```
+Controller ─GET─────> <Domain>ListResponseCreatorService ─> I<Domain>Service.getPagedList ─> repository.findPagedList
+           ─GET /id─> <Domain>ResponseCreatorService ─────> I<Domain>Service.getByEntityId ─> findProjectionByEntityId
+           ─POST────> ICreate<Domain>Service ─> validator ─> IEntityIdGeneratorService ─> repository.save
+           ─PUT─────> IModify<Domain>Service ─> findByEntityId (404) ─> validator ─> set fields (flushed on commit)
+           ─DELETE──> IDelete<Domain>Service ─> findByEntityId (404) ─> validator ─> repository.delete
+```
 
-- `ICreate{{Domain}}Service` / `Create{{Domain}}Service` — write, returns
-  the new entityId
-- `IModify{{Domain}}Service` / `Modify{{Domain}}Service` — update / status
-  transitions
-- `IDelete{{Domain}}Service` / `Delete{{Domain}}Service` — delete
-- `I{{Domain}}Service` / `{{Domain}}Service` — read-only queries,
-  `@Transactional(readOnly = true)`
+## Operation services: one interface per operation
 
-They live in `service/<domain>/` (interfaces) and `service/<domain>/impl/`
-(implementations) at the root, not inside `modules/`.
-
-Each is `@Service`, constructor injection only, with `private final`
-fields, every injected dependency validated with
-`Check.isNotNull(dep, "depName")` inside the constructor, and documented
-with a full `/** ... @param ... */` Javadoc block naming every parameter.
-Write services are `@Transactional` at the class level; read services are
-`@Transactional(readOnly = true)`. The **class itself is never `final`**:
-`@Transactional` is applied through a CGLIB proxy that must subclass it,
-exactly like the controller-method rule in `controller-conventions`.
+- `service/<domain_package>/` holds the interfaces, `impl/` the classes:
+  `I<Domain>Service` (reads), `ICreate<Domain>Service`, `IModify<Domain>Service`,
+  `IDelete<Domain>Service`. Never one fat service with every verb.
+- `@Service`, constructor injection only, `private final` fields, `Check.isNotNull(dep, "dep")`
+  per dependency in the constructor, `Check` per parameter in every public method, Javadoc with
+  `@param`/`@return` and `Designed for extension.` on every public method.
+- Write services are `@Transactional` at class level; the read service is
+  `@Transactional(readOnly = true)` — that annotation is also the routing decision to the
+  read-only datasource. The class is never `final` (CGLIB proxy).
+- Create: `Check` → validator → `entityIdGenerator.generate(Constants.DEFAULT_ENTITY_ID_SIZE,
+  repository::existsByEntityId)` → new entity, set fields and `Constants.Status.ACTIVE` →
+  `repository.save` → return the id.
+- Modify/delete: `Check` → load with `findByEntityId(...).orElseThrow(() -> new
+  EntityNotFoundException("<Domain> with id { id: X } doesn't exist."))` → validator → change.
+  Nothing is changed before the validator has run.
+- Reads: `getPagedList(filter, pageable)` returns `PagedList<<Domain>DTO>` (`items`, `count`)
+  from the repository's `Page`; `getByEntityId` maps the projection or throws the 404.
 
 ## Validators
 
-- Live in `service/validator/`, one interface+impl per write operation
-  (`ICreate{{Domain}}ServiceValidator`, `IModify{{Domain}}ServiceValidator`).
-- Shared field-level rules go in a `Base{{Domain}}DataValidator` that
-  concrete validators extend — don't copy-paste the same rule into two
-  validators.
-- Injected into the operation service and called as the FIRST line of the
-  method body, before any other logic.
-- Violations throw `BusinessException` (never `IllegalStateException` or a
-  plain `RuntimeException`).
+- `service/validator/`, one interface + impl per write operation:
+  `ICreate<Domain>ServiceValidator.validate(request)`,
+  `IModify<Domain>ServiceValidator.validate(request, existing)`,
+  `IDelete<Domain>ServiceValidator.validate(existing)`.
+- Rules shared by two operations go up into `abstract Base<Domain>DataValidator` (protected
+  constructor taking the repository, protected `validate<Rule>` methods); a rule only one
+  operation has stays in that validator. Never copy a rule into two validators.
+- Field formats (`@NotBlank`, `@Size`, `@Min`) live on the request model (400 via `@Valid`).
+  Validators hold business rules that need data (uniqueness, state transitions, references) and
+  throw `BusinessException` (422) with a message naming the value: `"… { name: X } already exists."`.
 
-## ResponseCreatorService: the only thing the Controller calls
+## Response creators: the read seam
 
-`modules/<domain>/service/I<Verb><Domain>ResponseCreatorService` (impl in
-`modules/<domain>/service/impl/`) wires one
-or two core services together with the mapper and returns the final API
-response model. Example: `Create{{Domain}}ResponseCreatorService` calls
-`ICreate{{Domain}}Service.save(request)` to get an `entityId`, then
-`I{{Domain}}ResponseCreatorService.create(entityId)` to build the full
-`{{Domain}}Response`. This seam is what keeps the Controller free of
-persistence concerns.
-
-This seam applies **only where the module has real local persistence**.
-For a pure pass-through/proxy module, see the `proxy-bff-conventions`
-skill — the operation Service calls the downstream client(s) directly
-instead.
+`modules/<domain_package>/service/I<Domain>ResponseCreatorService` and
+`I<Domain>ListResponseCreatorService` (+ `impl/`). The list creator turns the API
+`<Domain>ListRequest` into the service's `<Domain>ListFilter`, calls the read service and maps
+`PagedList` into `<Domain>ListResponse(mapper.toItemResponseList(page.items()), page.count())`.
+A creator never touches a repository. A module without local persistence follows
+`proxy-bff-conventions` instead.
 
 ## Mapper (MapStruct)
 
-- Root-level `mapper/I<Domain>Mapper.java`, shared by every module that
-  needs it — never a `mapper/` package inside `modules/<domain>/`.
-- One interface per domain: `@Mapper(componentModel = "spring",
-  unmappedTargetPolicy = ReportingPolicy.IGNORE)`.
-- Every method has a short Javadoc (`@param`/`@return`).
-- Derived/computed fields use `@Mapping(target = "...", expression =
-  "java(...)")`, delegating to a small static helper — never duplicate the
-  computation inline in both the service and the mapper.
-- The mapper only ever touches `model`/`dto` types on the way out and
-  `entity`/`projection` types on the way in — it is the one place allowed
-  to know about both.
+- Root-level `mapper/I<Domain>Mapper`, `@Mapper(componentModel = "spring",
+  unmappedTargetPolicy = ReportingPolicy.IGNORE)`, Javadoc per method.
+- Projection → DTO (`toDto`, `toItemDto`, `toItemDtoList`) and DTO → API model
+  (`@Mapping(target = "id", source = "entityId") toResponse`, `toItemResponse`, lists). Records
+  on both sides are fine. Request → entity is done by hand in the create service.
+- Derived fields: `@Mapping(target = "…", expression = "java(Helper.x(...))")` delegating to one
+  static helper, never the same computation in two places.
 
-## DTO vs model
+## dto vs model
 
-- `modules/<domain>/model/` = records exposed over the API
-  (`Create{{Domain}}Request`, `{{Domain}}Response`,
-  `{{Domain}}ListResponse`) — validated with `jakarta.validation`
-  annotations, bound with `@Valid @RequestBody`.
-- Root-level `dto/` = internal objects built off projections
-  (`{{Domain}}DTO`), used
-  only between the repository/mapper and the ResponseCreatorService. Never
-  return a `dto` type from a Controller (the one exception is the shared
-  `dto/response/EntityCreatedResponse`), and never return an `entity` from
-  anywhere above the repository.
+- `modules/<domain_package>/model/`: the API. Requests are Lombok `@Data` classes (normalized in
+  place); responses are records: `<Domain>Response`, `<Domain>ItemResponse`,
+  `<Domain>ListResponse(data, count)`.
+- Root `dto/<Domain>DTO`: internal record between read service and response creator. Never
+  returned by a controller (only `dto/response/EntityCreatedResponse` is). No entity ever leaves
+  the service layer.
+- `service/model/`: `PagedList<T>` and the `<Domain>ListFilter` records.

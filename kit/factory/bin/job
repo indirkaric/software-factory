@@ -537,6 +537,9 @@ def cmd_task_result(job):
     require(report.exists(), f"sf-verifier hasn't written {report}")
     verdict = re.sub(r"^VERIFY:\s*", "", first_line(report) or "")
     require(verdict in {"PASS", "FAIL", "SKIP"}, f"{report.name} starts with {first_line(report)!r}")
+    require(verdict != "PASS" or section(report, "Proof"),
+            f"{report.name} says PASS without a `## Proof` section; resume sf-verifier: write the request "
+            "and response of every Local check step under ## Proof, then reply")
     fault = {s.strip() for s in header(report).get("FAULT", "").split(",") if s.strip()}
     body = report.read_text().split("\n\n", 1)[1] if "\n\n" in report.read_text() else ""
     members = task_members(job)
@@ -728,6 +731,11 @@ def advance(job, stage):
                 "verify.md was written for another commit; verify again")
         if stage == "approve":
             require(verdict == "PASS", f"verify.md says VERIFY: {verdict}, not PASS")
+            proof = section(vf, "Proof")
+            require(proof, "verify.md has no `## Proof` (request and response of every Local check step)")
+            if job["pr"]:
+                comment("pr", job["pr"], f"### Factory: local check passed\n\nRound {job['round']}, commit "
+                                         f"`{h.get('COMMIT', '')[:7]}`. Request → response of every step:\n\n{proof}")
         elif stage == "build":
             require(verdict == "FAIL", f"verify.md says VERIFY: {verdict}, not FAIL")
             require(job["round"] < job["round_limit"], f"round {job['round']} of {job['round_limit']}: go to needs-human")

@@ -53,7 +53,9 @@ Calls:
 1. Run every job's `## Local check`, the header job's last. If a job lists
    none, call each endpoint in its build.md `## Endpoints`: one happy path,
    and one error case per new rule.
-2. Use `curl -s -w '\n%{http_code}'` with `Authorization: Bearer <token>`.
+2. Use `curl -s -w '\n%{http_code}'` with `Authorization: Bearer <token>`, and
+   keep for the report exactly what you sent (method, path with query, user,
+   JSON body) and what came back (status, body).
 3. Check one 403 per new permission. Call with the `basic` token (no
    permissions) or with a user whose group lacks it. The groups are `admin`
    Administrator (all), `manager` Manager and `user` Employee; see each
@@ -64,7 +66,7 @@ When something fails, read the end of that app's log for the cause.
 
 ## Write the report
 
-```markdown
+````markdown
 VERIFY: PASS | FAIL | SKIP
 FAULT: <service>[, <service>]
 
@@ -78,16 +80,34 @@ the user must start or set up.
 ## Calls
 One line per request: `service METHOD path (user) → status`, expected vs got.
 
+## Proof
+The evidence that the ticket works, one block per Local check step (and per
+endpoint you called without one), in order:
+
+### <n>. <what the step proves> (<user>) ✅ | ❌
+`METHOD /path?query` → `<status>`
+Request body (omit for none):
+```json
+<the body exactly as sent>
+```
+Response body (omit for none; cut after 40 lines with `…`):
+```json
+<the body exactly as received>
+```
+Expected: <what the spec says must come back>. Got: <matches | what differs>.
+
+Never print a token, password or secret; write `<token>`.
+
 ## Smoke
 The `SMOKE:` lines that are BROKEN, and the final SMOKE line.
 
 ## Log
 Only for FAIL: the relevant log lines (at most 30), with the app's name.
-```
+````
 
 Verdicts:
 - `PASS` only when `up` reached `HEALTH: UP`, every call returned what the
-  specs say, and `SMOKE: PASS`.
+  specs say, `SMOKE: PASS`, and `## Proof` has a ✅ block for every step.
 - `FAIL` in every other case where `up` didn't exit 3. That covers an app
   that doesn't start, Liquibase failing, a wrong call, or a BROKEN smoke line.
 - `SKIP` only when `up` exits 3 (docker or the development repo missing).

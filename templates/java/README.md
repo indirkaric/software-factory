@@ -14,6 +14,12 @@ infrastructure from. Spring Boot 3.2, Java 17, Maven, package `<BASE_PACKAGE>.<n
 | `scripts/new_service.py` | fills the placeholders, wires `--calls`, registers the port | no |
 | `REFERENCE.md` | where the skeleton came from and what was changed on purpose | no |
 
+A `persistence` service also gets a complete reference module for `--domain`: entity, Liquibase
+table, Criteria API repository with a filtered, sorted, paged list (`PagedList`, projections),
+validators, create/modify/delete/read services, MapStruct mapper, response creators, controller
+with request normalization (`@Trimmed`, `@UppercaseList`), and a unit test for each, including a
+MockMvc test of every status. Every later module is copied from it (`new-crud-module`).
+
 Roles: `persistence` (own Postgres database, Liquibase, JPA, read/write routing) and `proxy`
 (no database; composes other services, like a UI backend). Code between `@persistence`
 markers is removed for a proxy.

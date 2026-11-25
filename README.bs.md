@@ -8,6 +8,11 @@ pokrenu `mvn verify`, pregledaju izmjenu, **podignu servis lokalno nad Postgreso
 LocalStackom i pozovu endpointe**, i mergaju pull request kad je GitHub Actions zelen. Ti
 odlučuješ samo ono što agenti eskaliraju.
 
+Svaki tiket se testira, bez izuzetka: unit testovi za svaku klasu s logikom i zelen `mvn verify`
+su uslov (gate), a lokalna provjera piše **dokaz** — za svaki korak iz specifikacije poslani
+request body i vraćeni status i response body — koji factory objavi na pull requestu i pokaže
+ti prije odobrenja.
+
 Pravi i **nove projekte** jednom naredbom:
 
 ```

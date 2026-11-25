@@ -173,6 +173,14 @@
                             <artifactId>lombok-mapstruct-binding</artifactId>
                             <version>0.1.0</version>
                         </path>
+                        <!-- @persistence:start -->
+                        <path>
+                            <!-- Criteria API metamodel (<Entity>_): typed attributes instead of strings -->
+                            <groupId>org.hibernate.orm</groupId>
+                            <artifactId>hibernate-jpamodelgen</artifactId>
+                            <version>${hibernate.version}</version>
+                        </path>
+                        <!-- @persistence:end -->
                     </annotationProcessorPaths>
                 </configuration>
             </plugin>

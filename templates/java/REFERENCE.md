@@ -6,7 +6,7 @@ what came from where and what was deliberately changed. Read it only when changi
 
 | Area | From | Changed on purpose |
 |---|---|---|
-| `pom.xml` | identity | Dropped batch, zxing, aws-rds, json-patch, snakeyaml, jpamodelgen. JPA/Liquibase sit between `@persistence` markers. JaCoCo excludes only wiring and data holders. |
+| `pom.xml` | identity | Dropped batch, zxing, aws-rds, json-patch, snakeyaml (jpamodelgen came back for the reference module). JPA/Liquibase sit between `@persistence` markers. JaCoCo excludes only wiring and data holders. |
 | checkstyle | identity (stricter than artifact: 60-line methods, `InnerAssignment`, `Designed for extension.`) | — |
 | `Dockerfile` | identity (slim alpine, non-root) | artifact's installs Chrome and mount-s3, so it was not used |
 | `.github/workflows/ci.yml` | new | `mvn verify` on every push/PR; persistence adds `liquibase:updateTestingRollback` on an empty Postgres |
@@ -20,9 +20,14 @@ what came from where and what was deliberately changed. Read it only when changi
 | `platform.md` | — | Empty here; `software-factory new` appends to the development repo's copy |
 | header names | company-prefixed | `service-communication-id`, `correlation-id`, `user-id`; filters renamed to match |
 | `KeycloakRolesConverter` | new | realm roles become `SCOPE_` authorities too, so the dev realm needs no client scopes |
+| reference module `{{Domain}}` | flow of identity (groups) and the UI backend (a filtered list), artifact repositories | One module, controller to repository, persistence role only. Criteria API with `criteriaBuilder.construct` into record projections (sources: Lombok classes + `multiselect`). Count first, page query only when count > 0 (UI backend). One predicate builder for page and count (identity). Sort whitelist, `id`→`entityId`, `entityId` tiebreaker (identity's `getOrderingByName`); sources accept any property. LIKE input escaped. Constructor-injected `EntityManager` without `@PersistenceContext` on a final field. `Optional` instead of `null`. Reads through response creators, id/no-body writes call the operation service (identity's `GroupController`). |
+| `annotations/`, `CustomFieldProcessor` | identity, the UI backend | Walks superclasses, skips statics, `Locale.ROOT`; a reflection failure is an `IllegalStateException`, not a 422. |
+| `PagedList`, `SortHelper`, `EntityIdGeneratorService` | identity / the UI backend | `PagedList` is a record holding an immutable copy. Ids from `SecureRandom` (sources: `Math.random`). |
+| `hibernate-jpamodelgen` | identity, the UI backend | Annotation-processor path only, between `@persistence` markers. |
 | Liquibase | `0.0.1-SNAPSHOT/` folders, ids = the version | `changes/NNNN-*.sql`, unique ids, `IF NOT EXISTS`, rollback per changeset |
 | `storage-conventions`, `permissions-and-tokens` | data-storage, identity | SDK v2, explicit presign TTL, unknown caller gets nothing, PAT lookup id + scopes enforced |
 
-Verified: both roles build with `mvn -o verify` (tests, JaCoCo 0.80, checkstyle). The proxy role
+Verified: both roles build with `mvn -o verify` (tests, JaCoCo 0.80, checkstyle), also with a
+20-character `--domain` (the script's limit, so generated lines stay under 120 characters). The proxy role
 boots, with health/swagger 200, 401 without auth and 404 for an unknown path. The persistence
 role has not been booted against Postgres.

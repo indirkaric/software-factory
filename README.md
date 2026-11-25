@@ -9,6 +9,11 @@ run `mvn verify`, review the change, **boot it locally against Postgres, Keycloa
 LocalStack and call the endpoints**, and merge the pull request once GitHub Actions is green.
 You decide only what the agents escalate.
 
+Every ticket is tested, never skipped: unit tests for every class with logic and a green
+`mvn verify` are the gate, and the local check writes a **proof** — for each step of the spec,
+the request body sent and the status and response body that came back — which the factory
+posts on the pull request and shows you before approval.
+
 It also **creates new projects** with one command:
 
 ```

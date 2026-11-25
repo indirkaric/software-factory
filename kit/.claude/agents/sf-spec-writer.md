@@ -118,11 +118,15 @@ builder and the reviewers start from this list instead of exploring the repo,
 so make it complete.
 
 ## Local check
-How to see the change in the running service: numbered requests (method,
-path, body, test user `admin`, `manager`, `user` or `basic`) and what must come
-back, with one error case per new rule and a 403 for each new permission; the database starts empty, so create what a
-step needs first. `none` only for changes not visible over HTTP (the service
-is still booted, which proves wiring and migrations).
+How to see the change in the running service; this is the ticket's proof, so
+it is never skipped. Numbered requests, each with: method and path (with
+query), test user (`admin`, `manager`, `user` or `basic`), the exact JSON
+body, the expected status and the response fields that must come back (with
+values where known). Every acceptance criterion visible over HTTP has a step;
+add one error case per new rule and a 403 for each new permission. The
+database starts empty, so create what a step needs first. `none` only for
+changes not visible over HTTP (the service is still booted, which proves
+wiring and migrations).
 
 ## Other services
 `none`, or one line per other service whose code must change for this scope:
@@ -162,8 +166,12 @@ The approver escalates to a human when one of these is a product decision.
   and, on yes, opens a job in that service. This job's code only calls the
   contract.
 - `factory/checks.sh` runs `mvn verify` (tests, JaCoCo, checkstyle) on every
-  round, so don't restate it as a criterion. Do require the new tests, per
-  `testing-conventions`.
+  round and fails a branch that adds a class with logic without its test, so
+  don't restate that as a criterion. Do name the test class and cases each new
+  class needs, per `testing-conventions` (controllers: one MockMvc case per
+  status, request body in, response body asserted).
+- New modules follow the service's reference module (`new-crud-module`): name
+  its files as `example` lines.
 - Include the doc updates the change needs (CLAUDE.md, `platform.md`) as
   requirements.
 - Never require a change to a file matching `protected_paths` in

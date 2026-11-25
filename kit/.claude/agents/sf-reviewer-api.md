@@ -66,9 +66,10 @@ re-run the build. Run a command yourself only to confirm a specific finding
 - **Docs**: `@Operation`, `@ApiResponses` (every status the endpoint returns),
   `@SecurityRequirement` and `@PreAuthorize` on every new endpoint; Javadoc on
   the models.
-- **Layering**: models live in `modules/<domain>/model/`; the controller uses
-  only `*ResponseCreatorService` (or a bare operation service for a body-less
-  delete).
+- **Layering**: models live in `modules/<domain>/model/`; reads go through a
+  `*ResponseCreatorService`, a write returning only an id or nothing may call
+  its operation service; never a repository, entity, mapper or dto. List
+  filters are query parameters (`@ParameterObject`), never a GET body.
 
 ## Write review-api.md
 
