@@ -1,5 +1,5 @@
 # Local infrastructure for every service: Postgres, Keycloak, LocalStack (AWS).
-# Optional: Azurite (profile azure), Redis (profile redis). Services live in
+# Optional: Azurite, Redis (start them by name). Services live in
 # docker-compose.services.yml (scripts/add-service.sh adds them). `.env` sets
 # COMPOSE_FILE, so a plain `docker compose` in this folder uses all three files.
 name: factory
@@ -72,7 +72,6 @@ services:
 
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite:3.33.0
-    profiles: [azure]
     restart: unless-stopped
     command: azurite --loose --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0
     networks:
@@ -81,7 +80,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    profiles: [redis]
     restart: unless-stopped
     command: redis-server --appendonly yes
     volumes:

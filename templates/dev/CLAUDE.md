@@ -10,8 +10,8 @@ no Java code, no factory jobs. Talk to the user in Bosnian; files and commits in
 | `db` (database.factory.local) | postgres:16 | 5432 | `postgres`/`postgres`; one database + role `<db>_app` per service |
 | `auth` (auth.factory.local) | Keycloak 24 | 8080 | realm `factory`, client `factory-app` (public, password grant), admin `admin`/`admin` |
 | `aws` (aws.factory.local) | LocalStack 3.8 | 4566 | s3, sqs, ses; region `eu-west-1`; keys `test`/`test`; bucket `factory-local` |
-| `azurite` (azure.factory.local) | Azurite | 10000-10002 | profile `azure` |
-| `redis` (redis.factory.local) | redis:7 | 6379 | profile `redis` |
+| `azurite` (azure.factory.local) | Azurite | 10000-10002 | on demand: `docker compose up -d azurite` |
+| `redis` (redis.factory.local) | redis:7 | 6379 | on demand: `docker compose up -d redis` |
 
 Keycloak users (password = user name) and groups: `admin` (Administrator: every
 permission), `manager` (Manager), `user` (Employee), `basic` (none). A permission is a realm

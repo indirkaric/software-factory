@@ -4,7 +4,7 @@
 #   scripts/add-service.sh <name> <port> [--db <database>]
 #
 # - docker-compose.services.yml: the service, built from ../<name>, on <port>,
-#   alias <name>.factory.local, profiles `services` and `<name>`
+#   alias <name>.factory.local (start it by name)
 # - with --db: database + role <db>_app (password <db>_app) in the init script,
 #   and in the running Postgres when it is up
 # - scripts/hosts.txt: <name>.factory.local
@@ -25,7 +25,6 @@ deps = "      db:\n        condition: service_healthy\n" if db else ""
 block = f"""  {name}:
     image: ${{{var}_IMAGE:-factory/{name}:local}}
     build: ${{PROJECTS_DIR:-..}}/{name}
-    profiles: [services, {name}]
     restart: unless-stopped
     depends_on:
 {deps}      auth:
