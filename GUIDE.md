@@ -8,7 +8,7 @@ you do and **why**. (Bosanski: [VODIC.md](VODIC.md))
 | Part | Where | What it does |
 |---|---|---|
 | Claude Code | the `claude` command | runs the agents |
-| software-factory | `~/software-factory` (this repo) | the `software-factory` command, templates, agents |
+| software-factory | wherever you cloned it (this repo) | the `software-factory` command, templates, agents |
 | development | `~/Desktop/projects/development` | local Postgres, Keycloak, LocalStack + `dev-*` aliases |
 | a service (e.g. `invoice`) | `~/Desktop/projects/invoice` + its own GitHub repo | where the factory works issues |
 | GitHub | github.com | code, issues, PRs, Actions (CI) |
@@ -33,11 +33,12 @@ Make a fine-grained token with the table in [GITHUB-PERMISSIONS.md](GITHUB-PERMI
 ### A3. Clone and set up
 
 ```bash
-git clone https://github.com/indirkaric/software-factory.git ~/software-factory
+git clone https://github.com/indirkaric/software-factory.git
+cd software-factory
 ```
 
 ```bash
-~/software-factory/software-factory setup
+./software-factory setup
 ```
 
 Answers: "Use it? [Y/n]" (keep the token you cloned with; `n` pastes a new one) and the
@@ -45,7 +46,7 @@ projects folder (Enter = `~/Desktop/projects`). Setup installs `/software-factor
 agents into Claude Code and the `github` MCP. **Restart Claude Code.** Check:
 
 ```bash
-software-factory doctor ~/software-factory
+software-factory doctor .
 ```
 
 ## Phase B — the development repo (once)

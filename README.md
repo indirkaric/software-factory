@@ -26,11 +26,12 @@ Every new project gets a `CLAUDE.md`, a private GitHub repo under your token's a
 You need `git`, `gh`, `python3` ≥ 3.10, Java 17, Maven, Docker and Claude Code.
 
 ```bash
-git clone https://github.com/indirkaric/software-factory.git ~/software-factory
+git clone https://github.com/indirkaric/software-factory.git
+cd software-factory
 ```
 
 ```bash
-~/software-factory/software-factory setup
+./software-factory setup
 ```
 
 Setup checks the tools, keeps the GitHub token you cloned with (or asks for a new one),

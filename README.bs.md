@@ -25,11 +25,12 @@ GitHub Actions pipeline koji na svaki push pokreće unit testove. Paket `<bazni 
 Treba ti `git`, `gh`, `python3` ≥ 3.10, Java 17, Maven, Docker i Claude Code.
 
 ```bash
-git clone https://github.com/indirkaric/software-factory.git ~/software-factory
+git clone https://github.com/indirkaric/software-factory.git
+cd software-factory
 ```
 
 ```bash
-~/software-factory/software-factory setup
+./software-factory setup
 ```
 
 Setup provjeri alate, zadrži GitHub token s kojim si klonirao (ili pita za novi), provjeri

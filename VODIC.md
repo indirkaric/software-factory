@@ -8,7 +8,7 @@ Od praznog računara do prvog PR-a koji je factory napravio i mergao. Kod svakog
 | Dio | Gdje | Šta radi |
 |---|---|---|
 | Claude Code | komanda `claude` | pokreće agente |
-| software-factory | `~/software-factory` (ovaj repo) | komanda `software-factory`, template-i, agenti |
+| software-factory | gdje god si ga klonirao (ovaj repo) | komanda `software-factory`, template-i, agenti |
 | development | `~/Desktop/projects/development` | lokalni Postgres, Keycloak, LocalStack + `dev-*` aliasi |
 | servis (npr. `invoice`) | `~/Desktop/projects/invoice` + svoj GitHub repo | tu factory radi tikete |
 | GitHub | github.com | kod, issue-i (tiketi), PR-ovi, Actions (CI) |
@@ -34,11 +34,12 @@ Administration, pa `new` ne bi mogao napraviti repo.
 ### A3. Kloniraj i pokreni setup
 
 ```bash
-git clone https://github.com/indirkaric/software-factory.git ~/software-factory
+git clone https://github.com/indirkaric/software-factory.git
+cd software-factory
 ```
 
 ```bash
-~/software-factory/software-factory setup
+./software-factory setup
 ```
 
 Pitanja: "Use it? [Y/n]" (koristi token s kojim si klonirao; `n` = zalijepi novi), i folder
@@ -48,7 +49,7 @@ Claude Code i `github` MCP. **Restartuj Claude Code.**
 Provjera:
 
 ```bash
-software-factory doctor ~/software-factory
+software-factory doctor .
 ```
 
 ## Faza B — development repo (jednom)
