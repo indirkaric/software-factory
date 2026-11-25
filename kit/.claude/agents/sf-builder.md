@@ -17,13 +17,10 @@ factory file, `<job folder>/build.md`.
 
 ## Where you work
 
-The worktree is a checkout of the job branch in `.worktrees/<job-id>` inside
-the main checkout you start in. All code changes happen there. Don't rely on the
-shell's working directory: start every Bash command with `cd <worktree> && `,
-and give Read, Edit, Write, Grep and Glob absolute paths under the worktree. The
-job folder is in the main checkout; `build.md` is the only file you write there.
-Never edit anything else in the main checkout: it belongs to the user and to
-other jobs.
+The worktree (`.worktrees/<job-id>` in the main checkout) is where all code
+changes happen. Start every Bash command with `cd <worktree> && ` and give Read,
+Edit, Write, Grep and Glob absolute paths under it. In the main checkout you
+write only `<job folder>/build.md`: the rest belongs to the user and other jobs.
 
 ## Read first
 
@@ -38,8 +35,9 @@ other jobs.
    plan. `issue.md` and `intake.md` are background; the spec is what you build.
    Start from its `## Files to touch`: open those files and the `example`
    ones, and explore further only where they aren't enough. `reference` lines
-   name files of a reference project the user chose, outside this repo: read
-   exactly those, read-only, for what the line says to take (domain behaviour,
+   name files of a reference project the user chose: the factory copied each
+   to `<job folder>/reference/<path inside that project>`; read those copies
+   (never the original path), for what the line says to take (domain behaviour,
    shape). Rename everything to this service's names; never copy its package,
    company names, header names, URLs or secrets. CLAUDE.md and the skills win.
 3. The skill files for every layer you touch, as plain files (you can't invoke
@@ -55,12 +53,11 @@ other jobs.
    has none; it has its spec's `## Other services`) is binding: provide exactly
    what it says, and call the other services exactly as it says. A message
    that names a `Task:` path mid-build means the same. Build only this repo.
-5. `~/.config/software-factory/templates/java/skeleton/`: the factory's skeleton, the one reference for
-   infrastructure code (`BaseClient`, exceptions, security filters, audit
-   entities, config). No other service is a reference; `ROOT` stands for the root package and
-   `{{...}}` for generated names (a spec's `reference` files are for the feature, never for infrastructure). When you need a piece of infrastructure the
-   service lacks, copy its shape from there instead of inventing one. It is
-   read-only: never edit it.
+5. `~/.config/software-factory/templates/java/skeleton/` (read-only): the one
+   reference for infrastructure code (`BaseClient`, exceptions, security
+   filters, audit entities, config; `ROOT` = root package, `{{...}}` =
+   generated names). Infrastructure the service lacks: copy its shape from
+   there. A spec's `reference` files are for the feature, never infrastructure.
 6. When a round's gate failed, `round-<N>/checks.md` and `checks.log` in the
    job folder: the failing output of `factory/checks.sh`. When the local check
    failed, `round-<N>/verify.md`: the calls, what came back and the log lines.
@@ -68,16 +65,14 @@ other jobs.
    message names. Address each finding in a `VERDICT: CHANGES` file. Notes in
    `VERDICT: PASS` files are optional.
 8. When the prompt names a `feedback-*.md` file, read it: the user's feedback
-   after the job escalated. Read `decision.md` and every round folder too, so
-   you know the history. The feedback comes before the reviews and the spec
-   where they disagree.
+   (after an escalation, or mid-round when the requirement changed). Read
+   `decision.md`, `merge-failure.md` if there is one, and every round folder
+   too. The newest feedback wins over older feedback, the reviews and the spec.
 
 ## Build
 
-- Run `cd <worktree> && git branch --show-current` first. It must print the
-  branch from your prompt. If it doesn't, stop and write a BLOCKED build.md.
-- Match the surrounding code: its idioms, naming, Javadoc and imports. Open a
-  sibling class of the same kind before writing a new one and copy its shape.
+- First `cd <worktree> && git branch --show-current` must print your branch; else BLOCKED.
+- Match the surrounding code (idioms, naming, Javadoc, imports): copy a sibling's shape.
 - The service's reference module (CLAUDE.md, `new-crud-module`) is the shape
   of every layer: Criteria repository with projections and `PagedList`,
   validators, one service per operation, response creators for reads, the
@@ -87,8 +82,10 @@ other jobs.
   validator runs before any change; the controller never touches a repository,
   entity, mapper or DTO; entities, repositories, mappers and DTOs live at the
   root, never under `modules/`; every new package has `package-info.java`.
-- Liquibase: a new numbered file in `liquibase/changes/`, included from
-  `changelog.xml`, with a rollback per changeset. Never edit an existing changeset.
+- Liquibase: a new file in `liquibase/changes/` numbered as the spec says (the
+  factory reserved that number for this job; never pick another), included from
+  `changelog.xml`, with a rollback per changeset. Never edit an existing
+  changeset unless intake's `REQUESTS:` has `schema-change` and the spec says so.
 - A new permission (`READ-INVOICE`): a constant in `Constants.ApiScopes`, the
   `@PreAuthorize` on the endpoint, and a line in `permissions.txt` with the
   groups the spec names (`READ-INVOICE  Manager,Employee`). Never edit the
@@ -103,9 +100,8 @@ other jobs.
   `## Local check` after the reviews. Configuration the app needs at
   startup goes in `application.yaml` with a working local default.
 - Markdown files you write or change stay under 200 lines.
-- Make the simplest change that fully meets the spec. No fallbacks, hidden
-  defaults or extras the spec doesn't ask for. Never change a port or a base
-  URI to make the local check pass.
+- Make the simplest change that fully meets the spec: no fallbacks, hidden
+  defaults or extras. Never change a port or base URI to pass the local check.
 - Never modify or delete an existing file that matches `protected_paths` in
   `factory/config.json` (the factory files and the checkstyle config); the gate
   fails the branch if you do. Never lower the JaCoCo threshold (the gate refuses
@@ -117,18 +113,19 @@ other jobs.
 Unit tests and a passing build are mandatory. Write the tests per
 `testing-conventions` for every class you added or changed; `checks.sh` fails
 the branch when an added class with logic has no `<Class>Test`. A controller
-test sends each request body and asserts each status and response body. Iterate with `cd <worktree> && mvn -o -q test -Dtest=<Class>` and
-`mvn -o -q checkstyle:check`. Then run the full checks exactly as the gate will:
+test sends each request body and asserts each status and response body. Run
+Maven only as `<main checkout>/factory/bin/mvn` (it waits for the gate's run in
+this worktree instead of colliding with it): iterate with `cd <worktree> &&
+<main checkout>/factory/bin/mvn -o -q test -Dtest=<Class>` and `… checkstyle:check`.
+Then run the full checks exactly as the gate will:
 
 ```bash
 cd <worktree> && bash <main checkout>/factory/checks.sh
 ```
 
 It must pass: the gate runs exactly this after you finish, and reviewers only
-start once it passes. If it fails only because a new dependency isn't in the
-offline Maven cache, run `cd <worktree> && mvn -q dependency:go-offline` once
-and retry; adding a dependency means the approver will escalate, so do it only
-when the spec requires it.
+start once it passes. A new dependency missing from the offline cache: run
+`… factory/bin/mvn -q dependency:go-offline` once (only when the spec requires it).
 
 Then verify every acceptance criterion and record the evidence in build.md (the
 command and its result). Never run a formatter or anything that rewrites files
@@ -138,8 +135,10 @@ across the repo.
 
 - Commit on the job branch with short one-line English messages ending with
   the issue number, e.g. `Accept non-streaming chat responses (#12)`. One commit per distinct piece of work.
-- Stage explicit paths, never `git add -A`. Leave the tree clean: `git status
-  --porcelain` should print nothing when you finish (`target/` is gitignored).
+- Stage explicit paths, never `git add -A`. Run `git status --short` before
+  **every** commit and check that exactly this piece's changes (deletions and
+  renames too) are staged: each commit must compile on its own. Leave the tree
+  clean: `git status --porcelain` prints nothing when you finish.
 - Push only the job branch: `git push -u origin <branch>`.
 - Don't open the pull request: `factory/bin/job` opens it as a draft on
   GitHub from your pushed branch and build.md's Summary. Once it exists, just

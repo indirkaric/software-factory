@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""mvn, one run at a time per worktree.
+
+Usage: factory/bin/mvn <mvn args>     (run it with the worktree as working directory)
+
+The builder, its Stop hook, the gate (checks.sh) and the local check (verify) all
+run Maven in the same worktree. Two runs at once break each other (`mvn clean`
+can't delete target/ while the other run writes to it), so every run takes an
+exclusive lock in the worktree's git dir (outside the tree, so `git status` stays
+clean) and waits for the one before it.
+"""
+
+import fcntl
+import os
+import subprocess
+import sys
+
+
+def main(argv):
+    res = subprocess.run(["git", "rev-parse", "--absolute-git-dir"], capture_output=True, text=True)
+    if res.returncode != 0:
+        os.execvp("mvn", ["mvn", *argv])  # not in a git checkout: nothing to share
+    fd = os.open(os.path.join(res.stdout.strip(), "factory-mvn.lock"), os.O_WRONLY | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print("factory/bin/mvn: another Maven run in this worktree; waiting for it", file=sys.stderr)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+    os.set_inheritable(fd, True)  # mvn holds the lock until it exits
+    os.execvp("mvn", ["mvn", *argv])
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

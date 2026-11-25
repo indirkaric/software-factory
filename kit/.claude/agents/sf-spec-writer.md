@@ -92,9 +92,11 @@ Only when the change needs a new one: `NAME  Group,Group` lines for
 
 ## Data
 Only when the change touches persistence: the entity fields (name, Java type,
-column, nullability, constraints), the Liquibase changeset to add (file under
-the current versioned folder, included from `changelog.xml`), and any new
-repository method or projection.
+column, nullability, constraints), the Liquibase changeset to add, and any new
+repository method or projection. Its number comes from
+`<main checkout>/factory/bin/job reserve <job id> changeset` (run it; parallel
+jobs never get the same one): one file `<number>-<what>.sql` under
+`liquibase/changes/`, included from `changelog.xml`.
 
 ## Requirements
 Numbered list of what must be true when the work is done, in the order of the
@@ -115,7 +117,8 @@ Every file the builder will add or change, one per line with `new` or
 a reference project: `reference <absolute path> — what to take from it` for
 each of its files the builder should study (none relevant: no such line). The
 builder and the reviewers start from this list instead of exploring the repo,
-so make it complete.
+so make it complete. The factory copies each `reference` file into
+`<job folder>/reference/` for the builder, who can't open the original path.
 
 ## Local check
 How to see the change in the running service; this is the ticket's proof, so
@@ -159,7 +162,9 @@ The approver escalates to a human when one of these is a product decision.
   `Check`, `BusinessException`/`EntityNotFoundException`, `BaseClient`. Name them
   in Context and require them.
 - Liquibase changes are additive: a new changeset, never an edit to an existing
-  one. If the scope can't be met additively, say so under Assumptions.
+  one, unless intake's `REQUESTS:` has `schema-change` (then require exactly the
+  requested change). Otherwise, if the scope can't be met additively, say so
+  under Assumptions.
 - Other services: `platform.md` names them, and their repos sit next to this
   one. Never plan around a downstream endpoint that doesn't exist; put the
   change it needs under `## Other services`. The factory then asks the user

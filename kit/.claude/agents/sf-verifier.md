@@ -81,8 +81,10 @@ the user must start or set up.
 One line per request: `service METHOD path (user) → status`, expected vs got.
 
 ## Proof
-The evidence that the ticket works, one block per Local check step (and per
-endpoint you called without one), in order:
+The evidence that the ticket works: one `### <n>.` block for **every** step of
+the `## Local check` of every spec in the task (numbered on across the specs),
+plus one per endpoint you called without a step. `job task-result` refuses a
+PASS with fewer blocks than steps, or with a ❌ block. Never skip a step:
 
 ### <n>. <what the step proves> (<user>) ✅ | ❌
 `METHOD /path?query` → `<status>`

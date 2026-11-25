@@ -86,7 +86,9 @@ issue ─► intake ─► spec ─► build ─► gate ─► review ─► ve
 
 Najviše 3 runde. Ono što padne u zadnjoj rundi, ili što approver neće sam mergati (security,
 migracije koje nisu aditivne, novi plugini, CI izmjene, breaking API), čeka tebe kao
-`factory:needs-human` sa tačnim pitanjem na PR-u. Odgovoriš sa `/software-factory za #12: ...`.
+`factory:needs-human` sa tačnim pitanjem na PR-u. Odgovoriš sa `/software-factory za #12: ...`
+ili ga odobriš (`/software-factory odobri #12`). Promjenu prava ili šeme koju issue izričito
+traži approver sam mergea.
 
 ## Šta ima novi Java servis
 

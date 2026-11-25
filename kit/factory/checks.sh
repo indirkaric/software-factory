@@ -19,8 +19,9 @@ if [[ "${FACTORY_MVN_ONLINE:-0}" != "1" ]]; then
   MVN_FLAGS+=(-o)
 fi
 
-# Each worktree gets its own target/; ~/.m2 is shared and read-mostly.
-mvn "${MVN_FLAGS[@]}" clean verify
+# Each worktree gets its own target/; ~/.m2 is shared and read-mostly. factory/bin/mvn
+# waits for any other Maven run in this worktree (the builder's, its hook's) first.
+"$(dirname "$0")/bin/mvn" "${MVN_FLAGS[@]}" clean verify
 
 # Coverage floor: the JaCoCo check must exist and never ask for less than 80 %, so a branch
 # can't pass by lowering it (instruction and line coverage, see the skeleton's pom.xml).
@@ -58,4 +59,22 @@ missing = [f for f in added if logic.search(f) and not data.search(f) and not
 if missing:
     sys.exit("checks: classes added without their unit test:\n" + "\n".join(f"  {f}" for f in missing))
 print(f"checks: every added class with logic has a test ({len(added)} added files)")
+PY
+
+# Liquibase changeset files are numbered (0004-add-x.sql); two jobs built in parallel must not
+# both add 0004. `job reserve <job> changeset` hands out the numbers; this catches a clash
+# after syncing with the base branch.
+python3 - <<'PY'
+import collections, re, sys
+from pathlib import Path
+changes = Path("src/main/resources/liquibase/changes")
+nums = collections.defaultdict(list)
+for f in sorted(changes.glob("*")) if changes.is_dir() else []:
+    if (m := re.match(r"(\d+)-", f.name)):
+        nums[int(m.group(1))].append(f.name)
+dupes = [names for names in nums.values() if len(names) > 1]
+if dupes:
+    sys.exit("checks: Liquibase changeset numbers used twice (renumber this branch's file and its "
+             "changelog.xml include):\n" + "\n".join(f"  {', '.join(n)}" for n in dupes))
+print(f"checks: changeset numbers unique ({sum(map(len, nums.values()))} files)")
 PY

@@ -59,7 +59,10 @@ APPROVE only if all of these hold:
   asserts the new behaviour (spot-check two), and `checks.md` shows
   `mvn verify` passing with the test count.
 
-ESCALATE if any of them fails, or if the change:
+ESCALATE if any of them fails, or if the change does one of the following
+(except what `intake.md`'s `REQUESTS:` line lists and the issue explicitly asks
+for: `authorization-change` or `schema-change`, as Scope describes it, is then
+the work itself, so approve it when the diff does exactly that and no more):
 
 - touches identity or access: `security/`, `SecurityConfiguration`, the identity
   filters, the client-id allowlist, `IScopeContext`, or an authority on an
@@ -108,6 +111,7 @@ files to look at.
 skim on the dashboard. The detail goes in the sections below it.
 
 The first line must be exactly `APPROVE` or `ESCALATE`. On ESCALATE, the
-factory posts everything below it as a comment on the PR.
+factory posts everything below it as a comment on the PR. Write decision.md
+**in English**, whatever language the issue or the feedback is written in.
 
 When you're done, reply with one line: the first line of decision.md.

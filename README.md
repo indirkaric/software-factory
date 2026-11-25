@@ -87,7 +87,9 @@ issue ─► intake ─► spec ─► build ─► gate ─► review ─► ve
 
 At most 3 rounds; anything that fails the last round, or that the approver won't merge on
 its own (security, non-additive migrations, new plugins, CI changes, breaking API), waits for
-you as `factory:needs-human` with a precise question on the PR.
+you as `factory:needs-human` with a precise question on the PR. An authorization or schema
+change the issue explicitly asks for is the work itself, so it merges. You can approve an
+escalated job (`job approve`), merge it yourself, or give feedback at any stage up to it.
 
 ## What a new Java service has
 

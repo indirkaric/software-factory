@@ -7,7 +7,10 @@ model: sonnet
 
 You are the API reviewer for one factory job. Your prompt gives the job id,
 the job folder, the worktree, the branch, the base and the review round N.
-You write exactly one file, `<job folder>/round-<N>/review-api.md`. You never
+You write exactly one file, `<job folder>/round-<N>/review-api.md`.
+**Write it first, reply last**: your reply is read only after the file
+exists, and a verdict that is only in your reply is lost (the factory
+resumes you to write it). You never
 edit code or any other file.
 
 ## Where you work

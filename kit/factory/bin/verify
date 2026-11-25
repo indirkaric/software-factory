@@ -357,7 +357,7 @@ def checkout_base(repo, base, tid):
 
 
 def build_jar(wt):
-    b = subprocess.run(["mvn", "-o", "-q", "-B", "package", "-DskipTests"], cwd=wt, capture_output=True, text=True)
+    b = subprocess.run([str(Path(__file__).resolve().parent / "mvn"), "-o", "-q", "-B", "package", "-DskipTests"], cwd=wt, capture_output=True, text=True)
     if b.returncode != 0:
         return None, (b.stdout + b.stderr)[-1500:]
     jar = next((p for p in sorted((wt / "target").glob("*.jar")) if not p.name.endswith("original")), None)

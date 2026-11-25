@@ -125,8 +125,12 @@ Merge ide tek kad je i GitHub Actions zelen.
 
 - `factory:needs-info`: agent pita nešto na issue-u. Odgovori tamo ili
   `/software-factory odgovor za #3: ...`, pa `/software-factory run`.
-- `factory:needs-human`: pitanje je na PR-u. Merge na GitHubu = odobreno; ili
+- `factory:needs-human`: pitanje je na PR-u. Merge na GitHubu ili `/software-factory
+  odobri #3` = odobreno (fabrika sama prati merge); ili
   `/software-factory za #3: PAID se nikad ne vraća nazad, dodaj test` = nova runda.
+  Feedback možeš dati i dok je job u build/review/verify: ide u sljedeću rundu.
+- Promjenu prava ili postojeće tabele koju issue izričito traži approver sam mergea.
+- Issue sa linijom `Depends on: #N` čeka dok #N nije mergan.
 - Odbaci: `/software-factory odbaci #3, radićemo drugačije`.
 - Lokalna provjera preskočena (zauzet port, ugašen docker): popravi to, pa
   `/software-factory run`; job ponovo provjerava isti commit, bez nove runde.

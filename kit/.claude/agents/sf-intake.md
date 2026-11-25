@@ -96,6 +96,8 @@ For ACCEPT, rate:
 DECISION: ACCEPT | NEEDS-INFO | REJECT
 RISK: low | medium | high
 SURFACES: api, db, integration, security | ... | none
+TABLES: user_account, user_role | none
+REQUESTS: authorization-change, schema-change | none
 RESCOPED: yes | no
 
 ## Summary
@@ -114,14 +116,23 @@ Two or three sentences on the decision, citing the code you looked at.
 For NEEDS-INFO only: numbered questions for the author.
 ```
 
-- The four header lines come first, then a blank line. Write `RISK`,
-  `SURFACES` and `RESCOPED` on every decision; for NEEDS-INFO and REJECT,
-  write your best guess.
+- The six header lines come first, then a blank line. Write all of them on
+  every decision; for NEEDS-INFO and REJECT, write your best guess.
+- `TABLES`: the database tables the work creates or changes (lower case, as in
+  the Liquibase changelog). The factory never builds two jobs on the same tables
+  at once, so name every one.
+- `REQUESTS`: only what the issue **explicitly asks for** that the approver
+  would otherwise escalate: `authorization-change` (authorities or groups of
+  existing endpoints or permissions), `schema-change` (altering, renaming or
+  dropping existing columns or tables, editing existing changesets, changing
+  existing rows). Then the approver merges it. Never infer one; `none` otherwise.
+  Describe the exact requested change in Scope.
 - `## Summary` comes right after the header: 3 to 5 short bullets a human can
   skim on the dashboard. The detail goes in the sections below it.
 - `RESCOPED: yes` when your Scope differs from what the issue asked for.
 - The factory posts everything below the header as a comment on the GitHub issue, so
-  write it for the issue's reporter: plain, short and polite, in the language
-  the issue is written in.
+  write it for the issue's reporter: plain, short and polite, and **always in
+  English**, whatever language the issue or its comments are written in. Every
+  factory file and comment is English.
 
 When you're done, reply with one line: the `DECISION:` line from intake.md.
