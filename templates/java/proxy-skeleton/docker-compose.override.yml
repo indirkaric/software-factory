@@ -1,0 +1,4 @@
+# Local only: publish the service port on the host.
+services:
+  {{service-name}}:
+    ports: ["${PORT:-{{port}}}:{{port}}"]

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Instantiate a new microservice repo from ../skeleton and this template's Claude setup.
+"""Instantiate a new microservice repo from a skeleton and this template's Claude setup.
+
+Two skeletons, one per role: ../skeleton (persistence: own Postgres, reference CRUD module from entity
+to controller) and ../proxy-skeleton (proxy/BFF: no database; the reference module forwards {{Domain}}
+CRUD to the first --calls service through client -> ClientResponseWrapper -> ResponseUtil).
 
 Deterministic on purpose: the infrastructure is copied, never re-generated, so every
 service starts from the same verified code. Usage:
@@ -21,34 +25,17 @@ import sys
 from pathlib import Path
 
 TEMPLATE = Path(__file__).resolve().parent.parent
-SKELETON = TEMPLATE / "skeleton"
+SKELETONS = {"persistence": TEMPLATE / "skeleton", "proxy": TEMPLATE / "proxy-skeleton"}
 REGISTRY_REL = ".claude/skills/inter-service-propagation/platform.md"
 REGISTRY = TEMPLATE / REGISTRY_REL
 FIRST_PORT = 50001
+# A proxy without --calls still gets a working reference module; it forwards to this placeholder.
+PLACEHOLDER_DOWNSTREAM = "backend"
 
-# Paths (relative to the instantiated repo) that only a persistence service keeps.
-PERSISTENCE_ONLY = [
-    "src/main/java/ROOT/db",
-    "src/main/java/ROOT/entity",
-    "src/main/java/ROOT/service/audit",
-    "src/test/java/ROOT/service/audit",
-    "src/main/resources/liquibase",
-    "src/main/java/ROOT/util/SortHelper.java",
-    "src/test/java/ROOT/util/SortHelperTest.java",
-] + [  # the reference module: {{Domain}} from entity to controller
-    f"src/{kind}/java/ROOT/{rel}" for kind in ("main", "test") for rel in (
-        "repository", "mapper", "modules", "service/validator", "service/generator", "service/{{domain_package}}",
-        "service/model/{{Domain}}ListFilter.java", "dto/{{Domain}}DTO.java")
-]
 # Template-only Claude files that must not land in a generated service.
 TEMPLATE_ONLY = [
     ".claude/settings.local.json",
 ]
-BLOCK_PATTERNS = [
-    re.compile(r"[ \t]*<!-- @persistence:start -->.*?<!-- @persistence:end -->[ \t]*\n", re.S),
-    re.compile(r"# @persistence:start\n.*?# @persistence:end\n", re.S),
-]
-MARKERS = re.compile(r"[ \t]*(<!-- @persistence:(start|end) -->|# @persistence:(start|end))[ \t]*\n")
 NAME = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
 
 
@@ -110,6 +97,9 @@ def parse_args():
     args.api_prefix = args.api_prefix or args.name
     args.target = Path(args.target or TEMPLATE.parent / args.name).resolve()
     args.calls = [c.strip() for c in args.calls.split(",") if c.strip()]
+    args.downstream = None
+    if args.role == "proxy":
+        args.downstream = args.calls[0] if args.calls else PLACEHOLDER_DOWNSTREAM
     return args
 
 
@@ -145,16 +135,18 @@ def label(name):
 
 def wire_calls(args, values, rows):
     """Base URIs in application.yaml and outbound client ids in Constants."""
-    if not args.calls:
+    calls = args.calls or ([args.downstream] if args.downstream else [])
+    if not calls:
         return
+    base = {c: rows[c]["base"] if c in rows else f"http://{c}.factory.local:{FIRST_PORT - 1}/{c}/" for c in calls}
     yaml = args.target / "src/main/resources/application.yaml"
-    entries = "".join(f'  {c}:\n    base-uri: "{rows[c]["base"]}"\n' for c in args.calls)
+    entries = "".join(f'  {c}:\n    base-uri: "{base[c]}"\n' for c in calls)
     text = yaml.read_text(encoding="utf-8")
     yaml.write_text(re.sub(r"# One entry per downstream.*?client: \{\}\n", "client:\n" + entries, text, flags=re.S),
                     encoding="utf-8")
     constants = args.target / "src/main/java" / values["{{rootPath}}"] / "constants/Constants.java"
     ids = "".join(f'    public static final String {c.upper().replace("-", "_")}_CLIENT = '
-                  f'"{values["{{ServiceName}}"]}.{label(c)}";\n\n' for c in args.calls)
+                  f'"{values["{{ServiceName}}"]}.{label(c)}";\n\n' for c in calls)
     text = constants.read_text(encoding="utf-8")
     anchor = "    /** Inbound caller ids"
     constants.write_text(text.replace(anchor, "    /** Outbound caller ids, one per downstream. */\n" + ids + anchor, 1),
@@ -192,7 +184,12 @@ client id `<Caller>.{svc}`; add it to `{args.name}`'s `Constants.TRUSTED_CLIENTS
 
 def placeholders(args):
     pascal = "".join(part.capitalize() for part in args.name.split("-"))
+    down = args.downstream or ""
     return {
+        "{{downstream}}": down,
+        "{{Downstream}}": label(down),
+        "{{downstream_package}}": down.replace("-", "_"),
+        "{{DOWNSTREAM}}": down.upper().replace("-", "_"),
         "{{rootPackage}}": args.root_package,
         "{{rootPath}}": args.root_package.replace(".", "/"),
         "{{service-name}}": args.name,
@@ -231,6 +228,17 @@ def fill(text, values):
 
 
 def service_facts(args, values):
+    skeleton_name = SKELETONS[args.role].name
+    proxy_note = "" if args.role != "proxy" else f"""
+The reference module `modules/{values["{{downstream_package}}"]}/{values["{{domain_package}}"]}/` forwards
+`{args.domain}` CRUD to `{args.downstream}`: `client/{values["{{downstream_package}}"]}/{args.domain}Client` (extends
+`BaseClient`, returns `ClientResponseWrapper`) → `service/{values["{{downstream_package}}"]}/{values["{{domain_package}}"]}/`
+(one service per verb, `ResponseUtil.handleResponse`) → controller. Every new proxied endpoint copies it
+(`new-proxy-module`).
+""" + (f"""
+**`{args.downstream}` is a placeholder** (no `--calls` given): point `client.{args.downstream}.base-uri` and the
+reference module at a real service, or delete the module once a real one exists.
+""" if args.downstream == PLACEHOLDER_DOWNSTREAM and args.downstream not in args.calls else "")
     return f"""
 ## Service facts
 
@@ -250,9 +258,9 @@ def service_facts(args, values):
 | CI | `.github/workflows/ci.yml`: `mvn verify` on every push and PR{" + Liquibase update/rollback test" if args.role == "persistence" else ""} |
 | Local run | `development` repo: `dev-up`, then `mvn spring-boot:run` (see README.md) |
 
-Infrastructure comes from the software factory's skeleton
-(`~/.config/software-factory/templates/java/skeleton`); copy shapes from there, not from other services.
-"""
+Infrastructure comes from the software factory's {skeleton_name}
+(`~/.config/software-factory/templates/java/{skeleton_name}`); copy shapes from there, not from other services.
+{proxy_note}"""
 
 
 def main():
@@ -268,12 +276,13 @@ def main():
     check_against_registry(args, rows, names)
     values = placeholders(args)
 
-    shutil.copytree(SKELETON, args.target, dirs_exist_ok=True)
-    shutil.copy2(TEMPLATE / "CLAUDE.md", args.target / "CLAUDE.md")
+    shutil.copytree(SKELETONS[args.role], args.target, dirs_exist_ok=True)
+    if not (SKELETONS[args.role] / "CLAUDE.md").exists():  # the proxy skeleton has its own
+        shutil.copy2(TEMPLATE / "CLAUDE.md", args.target / "CLAUDE.md")
     shutil.copytree(TEMPLATE / ".claude", args.target / ".claude", dirs_exist_ok=True)
     shutil.copy2(REGISTRY, args.target / REGISTRY_REL)  # the registry as it is now
 
-    for rel in TEMPLATE_ONLY + (PERSISTENCE_ONLY if args.role == "proxy" else []):
+    for rel in TEMPLATE_ONLY:
         path = args.target / rel
         if path.is_dir():
             shutil.rmtree(path)
@@ -282,10 +291,7 @@ def main():
 
     for path in [p for p in args.target.rglob("*") if p.is_file()]:
         text = path.read_text(encoding="utf-8")
-        if args.role == "proxy":
-            for pattern in BLOCK_PATTERNS:
-                text = pattern.sub("", text)
-        text = MARKERS.sub("", fill(text, values))
+        text = fill(text, values)
         if path.name == "CLAUDE.md" and path.parent == args.target:
             text = re.sub(r"\n> \*\*Fill these in.*?\n\n", "\n", text, count=1, flags=re.S)
             text = text.rstrip() + "\n" + service_facts(args, values)
@@ -311,6 +317,8 @@ def main():
     if not args.no_register:
         register(args, values)
     print(f"Created {args.target} ({args.role}, port {args.port}, package {args.root_package})")
+    if args.downstream == PLACEHOLDER_DOWNSTREAM and not args.calls:
+        print(f"Note: no --calls, so the reference module forwards to the placeholder '{args.downstream}'")
     print(f"Registry: {'skipped' if args.no_register else REGISTRY}; outside changes: {args.target / 'PLATFORM_CHANGES.md'}")
     print(f"Next: cd {args.target} && mvn verify")
 

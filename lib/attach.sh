@@ -65,7 +65,8 @@ approve → merge, one PR per issue on branch `factory/<job-id>`, each in its
 own worktree `.worktrees/<job-id>`. State is in `factory/jobs/`;
 `factory/bin/job` is its only writer. `factory/`, `.worktrees/` and this file
 are in `.git/info/exclude`. The reference for infrastructure code is the
-factory's skeleton at `~/.config/software-factory/templates/java/` (read-only).
+factory's skeleton at `~/.config/software-factory/templates/java/` (read-only;
+`skeleton/`, or `proxy-skeleton/` for a proxy).
 Factory agents report through their files; the operator's run authorizes
 commits and pushes on the job's own branch only.
 NOTE

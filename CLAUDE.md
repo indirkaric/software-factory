@@ -12,15 +12,17 @@ docs and commits in English (the Bosnian docs are README.bs.md and VODIC.md).
   one agent per step. Installed into `~/.claude` by setup/update.
 - `kit/factory/`: copied into each service on attach: `bin/job` (state machine, GitHub),
   `bin/gate`, `bin/route`, `bin/verify` (local check), `checks.sh`, `config.json`, dashboard.
-- `templates/java/`: skeleton (placeholders `{{...}}`, `ROOT` = root package), CLAUDE.md,
-  skills, `platform.md` registry, `scripts/new_service.py`. `templates/dev/`: development repo.
+- `templates/java/`: two skeletons (placeholders `{{...}}`, `ROOT` = root package): `skeleton/`
+  (persistence) and `proxy-skeleton/` (proxy/BFF, own CLAUDE.md); the shared CLAUDE.md, skills,
+  `platform.md` registry, `scripts/new_service.py` (picks the skeleton by role). `templates/dev/`: development repo.
 
 ## Rules
 
 - Agents keep their one-file / one-line-reply contracts; scripts parse those first lines.
 - Markdown files stay under 200 lines. No former-employer or personal names anywhere: the package is
   `BASE_PACKAGE` (default `com.<user>`).
-- After changing `templates/java/skeleton`, generate both roles and run `mvn verify`
-  (`templates/java/README.md`). After changing `kit/factory/bin/*`, `python3 -m py_compile`.
+- After changing `templates/java/skeleton` or `proxy-skeleton`, generate both roles and run
+  `mvn verify` (`templates/java/README.md`). Infrastructure both share (security, `WebClientConfig`,
+  `Check`, exceptions, checkstyle) is changed in both. After changing `kit/factory/bin/*`, `python3 -m py_compile`.
 - The template `platform.md` stays empty: `new` registers services in the user's development
   repo (`platform.md`), never in this repo, so others can use and `update` the factory.

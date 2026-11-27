@@ -18,7 +18,7 @@ It also **creates new projects** with one command:
 
 ```
 /software-factory new identity java           Spring Boot service with its own Postgres database
-/software-factory new ui-service java proxy   Spring Boot proxy/BFF: no database, calls other services
+/software-factory new ui-service java proxy --calls identity   proxy/BFF from the proxy skeleton: no database, forwards to identity
 /software-factory new development dev         local stack: docker compose, Keycloak, LocalStack, Postgres, aliases
 ```
 
@@ -141,7 +141,7 @@ setup.sh new-service.sh   what it runs; lib/attach.sh, lib/doctor.sh
 kit/.claude/              /software-factory skills and sf-* agents (installed into ~/.claude)
 kit/factory/              runtime copied into a service: bin/job gate route verify, checks.sh, config.json, dashboard
 kit/hooks/gate-hook       the builder's Stop hook
-templates/java/           skeleton, CLAUDE.md, skills, empty registry (platform.md), generator
+templates/java/           skeleton (persistence), proxy-skeleton, CLAUDE.md, skills, empty registry, generator
 templates/dev/            development repo: compose, realm, LocalStack hooks, dev-* aliases
 ```
 

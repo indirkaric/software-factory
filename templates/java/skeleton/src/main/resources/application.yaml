@@ -15,7 +15,6 @@ spring:
       resource-server:
         jwt:
           issuer-uri: http://auth.factory.local:8080/realms/factory
-# @persistence:start
   liquibase:
     enabled: true
     change-log: classpath:/liquibase/changelog.xml
@@ -34,7 +33,6 @@ database:
     username: {{db}}_app
     password: {{db}}_app
     driver-class-name: org.postgresql.Driver
-# @persistence:end
 
 # One entry per downstream service, added by the bootstrapper:
 #   <name>:

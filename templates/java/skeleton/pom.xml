@@ -66,7 +66,6 @@
             <artifactId>spring-boot-configuration-processor</artifactId>
             <optional>true</optional>
         </dependency>
-        <!-- @persistence:start -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
@@ -79,7 +78,6 @@
             <groupId>org.liquibase</groupId>
             <artifactId>liquibase-core</artifactId>
         </dependency>
-        <!-- @persistence:end -->
         <dependency>
             <groupId>org.mapstruct</groupId>
             <artifactId>mapstruct</artifactId>
@@ -130,7 +128,6 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
-            <!-- @persistence:start -->
             <plugin>
                 <groupId>org.liquibase</groupId>
                 <artifactId>liquibase-maven-plugin</artifactId>
@@ -148,7 +145,6 @@
                     </dependency>
                 </dependencies>
             </plugin>
-            <!-- @persistence:end -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -173,14 +169,12 @@
                             <artifactId>lombok-mapstruct-binding</artifactId>
                             <version>0.1.0</version>
                         </path>
-                        <!-- @persistence:start -->
                         <path>
                             <!-- Criteria API metamodel (<Entity>_): typed attributes instead of strings -->
                             <groupId>org.hibernate.orm</groupId>
                             <artifactId>hibernate-jpamodelgen</artifactId>
                             <version>${hibernate.version}</version>
                         </path>
-                        <!-- @persistence:end -->
                     </annotationProcessorPaths>
                 </configuration>
             </plugin>

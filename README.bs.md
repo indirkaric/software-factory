@@ -17,7 +17,7 @@ Pravi i **nove projekte** jednom naredbom:
 
 ```
 /software-factory new identity java           Spring Boot servis sa svojom Postgres bazom
-/software-factory new ui-service java proxy   Spring Boot proxy/BFF: bez baze, zove druge servise
+/software-factory new ui-service java proxy --calls identity   proxy/BFF iz proxy skeletona: bez baze, prosljeđuje na identity
 /software-factory new development dev         lokalni stack: docker compose, Keycloak, LocalStack, Postgres, aliasi
 ```
 

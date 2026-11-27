@@ -53,10 +53,11 @@ write only `<job folder>/build.md`: the rest belongs to the user and other jobs.
    has none; it has its spec's `## Other services`) is binding: provide exactly
    what it says, and call the other services exactly as it says. A message
    that names a `Task:` path mid-build means the same. Build only this repo.
-5. `~/.config/software-factory/templates/java/skeleton/` (read-only): the one
+5. `~/.config/software-factory/templates/java/skeleton/` (read-only; for a
+   proxy service, CLAUDE.md role `proxy`: `proxy-skeleton/`): the one
    reference for infrastructure code (`BaseClient`, exceptions, security
-   filters, audit entities, config; `ROOT` = root package, `{{...}}` =
-   generated names). Infrastructure the service lacks: copy its shape from
+   filters, audit entities or `ResponseUtil`, config; `ROOT` = root package,
+   `{{...}}` = generated names). Infrastructure the service lacks: copy its shape from
    there. A spec's `reference` files are for the feature, never infrastructure.
 6. When a round's gate failed, `round-<N>/checks.md` and `checks.log` in the
    job folder: the failing output of `factory/checks.sh`. When the local check

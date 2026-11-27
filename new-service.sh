@@ -6,7 +6,8 @@
 #       [--port 50001] [--dir ~/Desktop/projects] [--ref <project path>] [--public] [--offline]
 #
 #   java     Spring Boot service with its own Postgres database
-#   proxy    Spring Boot proxy/BFF, no database, calls other services
+#   proxy    Spring Boot proxy/BFF from templates/java/proxy-skeleton: no database, its reference
+#            module forwards --domain CRUD to the first --calls service
 #   dev      development repo: docker compose with Postgres, Keycloak, LocalStack, aliases
 #   --ref       optional: a local project the factory's agents read as an example in every
 #               job of the new service (config.json "reference"; `job create --ref` overrides)
@@ -20,7 +21,7 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 fail() { echo "new: $*" >&2; exit 1; }
 step() { echo; echo "==> $*"; }
 cfg() { sed -n "s/^$1=//p" "$HOME/.config/software-factory/config.env" 2>/dev/null | tail -1 || true; }

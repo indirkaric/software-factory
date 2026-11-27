@@ -32,7 +32,6 @@ jobs:
           name: surefire-reports
           path: target/surefire-reports
           if-no-files-found: ignore
-# @persistence:start
 
   migrations:
     # Every Liquibase changeset must apply, roll back and apply again on an empty database.
@@ -56,4 +55,3 @@ jobs:
           cache: maven
       - name: Liquibase update, rollback, update
         run: mvn -B -ntp liquibase:updateTestingRollback -Dliquibase.url=jdbc:postgresql://localhost:5432/{{db}}
-# @persistence:end

@@ -181,10 +181,10 @@ Spawn `sf-context` (CLAUDE.md exists: add `A CLAUDE.md exists: keep what the cod
 
 ## /software-factory new
 
-Not a job. Kinds: `java` (persistence service, own Postgres), `java proxy` (no database,
-calls other services), `dev` (development repo); missing: ask. Only when the user said so:
-`--domain <Entity>` (default: the name in PascalCase), `--calls a,b`, `--ref <path>` (a local
-project its jobs read as an example). Say in one line what will be created, then run
+Not a job. Kinds: `java` (own Postgres, `templates/java/skeleton`), `java proxy` (no database,
+`proxy-skeleton`: its module forwards `--domain` CRUD to the first `--calls` service; no `--calls`:
+ask which, else a placeholder `backend`), `dev`; missing: ask. Only when the user said so: `--domain
+<Entity>` (default: the name in PascalCase), `--calls a,b`, `--ref <path>` (a local example for its jobs). Say in one line what will be created, then run
 `~/.local/bin/software-factory new <name> java [proxy] [--domain X] [--calls a,b] [--ref <path>]`
 (or `new <name> dev`) in the background. It generates the project with its CLAUDE.md, runs
 `mvn verify` (java), creates the private GitHub repo, pushes `main`, registers a java service

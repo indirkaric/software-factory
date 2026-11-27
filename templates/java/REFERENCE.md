@@ -27,7 +27,10 @@ what came from where and what was deliberately changed. Read it only when changi
 | Liquibase | `0.0.1-SNAPSHOT/` folders, ids = the version | `changes/NNNN-*.sql`, unique ids, `IF NOT EXISTS`, rollback per changeset |
 | `storage-conventions`, `permissions-and-tokens` | data-storage, identity | SDK v2, explicit presign TTL, unknown caller gets nothing, PAT lookup id + scopes enforced |
 
+| `proxy-skeleton/` | `skeleton/` minus persistence, the UI backend's proxy flow | Its own skeleton instead of stripping `@persistence` markers. Client → `ClientResponseWrapper` → `ResponseUtil` → service per verb → controller, as in the UI backend, but: one `exchange()` in `BaseClient` instead of a full WebClient chain per method; the base URI and `service-communication-id` bound once (the UI backend sets the header per call); query values as URI variables (fully encoded, empty ones skipped); the wrapper is a record with `HttpStatusCode`; `ResponseUtil` also maps 400/401/403/409, reads both error body shapes, ignores unknown fields, and never instantiates a response for a 204 (records). Headers, packages and filters stay the factory's. No PAT/shared-link filters, audit aspect or local tables. |
+
 Verified: both roles build with `mvn -o verify` (tests, JaCoCo 0.80, checkstyle), also with a
 20-character `--domain` (the script's limit, so generated lines stay under 120 characters). The proxy role
-boots, with health/swagger 200, 401 without auth and 404 for an unknown path. The persistence
+(`proxy-skeleton/`, also with `--calls` against a registered service) boots, with health/swagger
+200 and 401 without auth. The persistence
 role has not been booted against Postgres.

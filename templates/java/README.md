@@ -6,8 +6,9 @@ infrastructure from. Spring Boot 3.2, Java 17, Maven, package `<BASE_PACKAGE>.<n
 
 | Path | What | In a new service |
 |---|---|---|
-| `skeleton/` | infrastructure code + tests, `pom.xml`, `Dockerfile`, `docker-compose*.yml`, `permissions.txt`, `.github/workflows/ci.yml` | yes, filled |
-| `CLAUDE.md` | architecture rules, always loaded by Claude Code | yes, + service facts |
+| `skeleton/` | persistence role: infrastructure code + tests, `pom.xml`, `Dockerfile`, `docker-compose*.yml`, `permissions.txt`, `.github/workflows/ci.yml` | yes, filled |
+| `proxy-skeleton/` | proxy role: the same infrastructure without a database, plus `ClientResponseWrapper`, `ResponseUtil`, a proxied reference module and its own `CLAUDE.md` | yes, filled |
+| `CLAUDE.md` | architecture rules of a persistence service, always loaded by Claude Code | yes (persistence), + service facts |
 | `.claude/skills/*` | one skill per layer, module checklists, storage, permissions | yes |
 | `.claude/skills/inter-service-propagation/platform.md` | registry snapshot (the live one: `<development repo>/platform.md`); empty here | yes (snapshot) |
 | `.claude/agents/*` | interactive helpers (creators, test writer, reviewers) | yes |
@@ -20,9 +21,18 @@ validators, create/modify/delete/read services, MapStruct mapper, response creat
 with request normalization (`@Trimmed`, `@UppercaseList`), and a unit test for each, including a
 MockMvc test of every status. Every later module is copied from it (`new-crud-module`).
 
-Roles: `persistence` (own Postgres database, Liquibase, JPA, read/write routing) and `proxy`
-(no database; composes other services, like a UI backend). Code between `@persistence`
-markers is removed for a proxy.
+Roles, one skeleton each: `persistence` (`skeleton/`: own Postgres database, Liquibase, JPA,
+read/write routing) and `proxy` (`proxy-skeleton/`: no database; forwards to and composes other
+services, like a UI backend).
+
+A `proxy` gets a proxied reference module for `--domain`, forwarding to the first `--calls`
+service (or a placeholder `backend`): `client/<downstream>/<Domain>Client extends BaseClient`
+returns a `ClientResponseWrapper` (status and body as answered, `null` when unreachable) →
+`service/<downstream>/<domain>/` one service per verb, `ResponseUtil.handleResponse` maps the body
+or throws with the downstream's status (400/403/404/409/422, 503 when unreachable) →
+`modules/<downstream>/<domain>/<Domain>Controller`. Its endpoints mirror the persistence reference
+module, so a proxy over a generated service works as generated. Extra placeholders:
+`{{downstream}}`, `{{Downstream}}`, `{{downstream_package}}`, `{{DOWNSTREAM}}`.
 
 ## Headers between services
 
@@ -37,11 +47,12 @@ Users authenticate with a Keycloak JWT (realm `factory`); scopes and realm roles
 
 ## Changing the skeleton
 
-Edit `skeleton/`, then prove both roles still build:
+Edit `skeleton/` or `proxy-skeleton/` (shared infrastructure — security, `WebClientConfig`, `Check`,
+exceptions, checkstyle — in both), then prove both roles still build:
 
 ```bash
 python3 scripts/new_service.py --name sandbox --role persistence --domain Demo --no-register --target /tmp/sandbox && (cd /tmp/sandbox && mvn verify)
 ```
 
-Repeat with `--role proxy`, note the change in `REFERENCE.md`, commit and push the factory
+Repeat with `--role proxy --domain Demo` (with and without `--calls`), note the change in `REFERENCE.md`, commit and push the factory
 repo; other machines get it with `software-factory update`.

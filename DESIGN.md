@@ -21,7 +21,7 @@ Pipeline, state machine, gate and routing come from zazencodes' software-factory
 |---|---|---|---|
 | Install | `install.sh` per service, committed | `software-factory setup` once per machine | simple install; services stay clean |
 | Names | `/factory`, agents `intake`, `builder`… | `/software-factory`, `sf-*` agents | no clash with other factories or a service's own agents |
-| New projects | separate project-template | `new <name> java [proxy]` / `dev` from `templates/` | one versioned unit |
+| New projects | separate project-template | `new <name> java [proxy]` / `dev` from `templates/` (skeleton or proxy-skeleton) | one versioned unit |
 | CLAUDE.md | assumed present | `sf-context` writes it when missing; every new project has one | agents read one file instead of exploring |
 | PR | builder ran `gh pr create` | `job advance … gate` opens the draft PR | fewer tools in an agent's hands |
 | Local check | none | `verify` stage: `sf-verifier` + `factory/bin/verify` | "every feature checked locally" |

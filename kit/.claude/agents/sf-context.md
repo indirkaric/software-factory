@@ -39,7 +39,8 @@ pattern you will write down:
 6. `README*`, any `.claude/` files the repo already has, and
    `git log --oneline -20` for the commit message style.
 7. The factory's skeleton conventions, as a format model and a comparison:
-   `~/.config/software-factory/templates/java/CLAUDE.md`. Use its section structure. Do
+   `~/.config/software-factory/templates/java/CLAUDE.md` (a proxy/BFF without a
+   database: `templates/java/proxy-skeleton/CLAUDE.md`). Use its section structure. Do
    not copy its rules: describe what **this** service does. Where this
    service differs from the skeleton, say so in one line each, so the agents
    follow the service and not the skeleton.
