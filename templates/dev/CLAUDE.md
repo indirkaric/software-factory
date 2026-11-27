@@ -42,5 +42,8 @@ role + a client scope + a scope mapping, all one name (`READ-USER`); services re
   `<service>/permissions.txt`, which the software factory syncs here.
 - A new bucket or queue: a new numbered hook in `docker-mounts/localstack/`.
 - Never `docker compose down -v` without the user's yes: it deletes every local database.
+- Rebuild or restart one service only with `dev-rebuild <service>` (all three compose files,
+  `--no-deps --force-recreate`, image labeled with the commit), never a raw `docker compose
+  -f … up --build`: a subset of the files recreates `db` and `auth` without their host ports.
 - No end-to-end test suite here; services are checked by the software factory's local check.
 - Markdown files stay under 200 lines.

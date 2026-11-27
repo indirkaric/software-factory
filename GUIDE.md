@@ -81,7 +81,7 @@ service → controller, its reference module forwarding to the first `--calls` s
 service (`<base package>.invoice`, port 50001+) with its `CLAUDE.md`,
 runs `mvn verify`, creates the private repo and pushes `main` with auto-merge and squash on,
 and registers the service in the development repo (compose, database, host alias, registry
-`platform.md`). Run it locally with `dev-run invoice`, or `mvn spring-boot:run` from the IDE.
+`platform.md`). Run it locally with `dev-rebuild invoice`, or `mvn spring-boot:run` from the IDE.
 
 ## Phase D — every day
 
@@ -128,7 +128,7 @@ software-factory update
 | Symptom | Fix |
 |---|---|
 | `could not create ... Administration: write` | new token (A2), `software-factory setup`, answer `n` |
-| `VERIFY: SKIP` | Docker isn't running or there's no development repo: `dev-up` |
+| `VERIFY: SKIP` | the environment lacks something (its `NEEDS:` lines): `dev-up`, or `dev-rebuild <service>` for a stale container; then `/software-factory` → `job reverify` (same commit, no new round) |
 | the gate fails "offline" | start the session with `FACTORY_MVN_ONLINE=1 claude` |
 | port already in use | stop the other stack or change the port in `docker-compose.override.yml` |
 | token about to expire | `software-factory doctor` warns 14 days ahead |

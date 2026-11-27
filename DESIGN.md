@@ -42,8 +42,16 @@ worktree's jar and runs it on a free port with the datasource pointed at that da
 the JWT keys at the local Keycloak. `sf-verifier` (Sonnet) calls each spec's `## Local check`
 as `admin`/`manager`/`user`/`basic`, runs `verify smoke`, writes the report `up` named
 (`VERIFY: PASS | FAIL | SKIP`); `job task-result` turns it into each job's
-`round-N/verify.md`, tied to the commit. `down` stops the apps and drops the databases. FAIL goes back to the builder; SKIP (no Docker, no
-development repo) escalates, because nothing merges unchecked.
+`round-N/verify.md` (the latest of `round-N/verify-attempt-<k>.md`), tied to the commit. `down`
+stops the apps and drops the databases. FAIL (a proven defect in a changed service, named in
+`FAULT`) goes back to the builder. An environment problem is `VERIFY: SKIP` + `FAULT: environment`
++ `NEEDS:` lines: the job stays in verify on the same commit and round, `job reverify` checks it
+again once fixed, and the third SKIP escalates, because nothing merges unchecked. A spec's
+`REQUIRES: <service> <commit>` lines (job.json `requires`) make `verify preflight <job>` compare
+that service's container label `org.opencontainers.image.revision` (set by `dev-rebuild`) with
+the commit before any verifier runs. Clients of services outside the run point at their
+published port from `platform.md`. A round on an unchanged commit reuses the earlier round's
+gate and review PASSes (`REUSED FROM round-<N>`).
 
 ## Permissions and the realm
 

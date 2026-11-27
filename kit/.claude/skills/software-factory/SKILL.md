@@ -103,23 +103,23 @@ told it is resuming. Report one line per transition, e.g.
   FAIL → `job advance <id> build` (or `needs-human` on the last round), resume
   the builder: `The gate failed: read round-<N-1>/checks.md and checks.log, fix
   it, push, update build.md.`
-- **review**: spawn every reviewer in `agents.reviewers` in one message
-  (`sf-reviewer-<r>`, its model, `<header> Review round <N>.`). WAIT FOR ALL; `job sync
-  <id>` after each; one that replied but shows `pending` → resume it once: `Write
-  round-<N>/review-<r>.md first, then reply.` Any CHANGES → `job advance <id> build` (or
+- **review**: spawn, in one message, every reviewer in `agents.reviewers` without a
+  `round-<N>/review-<r>.md` (`advance` copies a PASS on the same commit: `REUSED`) (`sf-reviewer-<r>`,
+  its model, `<header> Review round <N>.`). WAIT FOR ALL; `job sync <id>` after each; one that replied
+  but shows `pending` → resume it once: `Write round-<N>/review-<r>.md first, then reply.` Any CHANGES → `job advance <id> build` (or
   `needs-human`), resume the builder: `Round <N-1> reviews are in round-<N-1>/. Address
   every VERDICT: CHANGES, push, update build.md.` All PASS → `job advance <id> verify`.
 - **verify**: `job task <id>`. `TASK: wait` → the job waits in verify for the
   task's other jobs. `TASK: blocked <service> <stage>` → tell the user; the
-  task's jobs are done for this run. `TASK: verify` → spawn one `sf-verifier` for the task,
-  with the header of the root job (last row) and `Verify round <N>.`, then
+  task's jobs are done for this run. `TASK: verify` → `verify preflight <id>`; BLOCKED → no
+  verifier: tell the user why (e.g. `dev-rebuild identity`), it waits in verify. OK → spawn one
+  `sf-verifier` for the task, with the root job's header (last row) and `Verify round <N>.`, then
   `job task-result <id>`: it advances each job, posts the proof on the PR and prints its new
   stage. `approve` → show the user the `## Proof` of `round-<N>/verify.md` (request body →
   status, response body per step), spawn `sf-approver` with `<header> PR: #<pr>. Final round: <N>.`; `build` → resume its builder: `The local check failed: read
-  round-<N-1>/verify.md, fix it, push, update build.md.`; `needs-human` → tell
-  the user (on SKIP: what to free or start; once fixed, `job retry` re-checks the
-  same commit, no rebuild); unchanged → waits for the next check.
-  The verifier replies `VERIFY: NOT RUN …` → `job task <id>` again.
+  round-<N-1>/verify.md, fix it, push, update build.md.`; stays in verify (SKIP, `FAULT:
+  environment`) or `needs-human` (3rd SKIP) → tell the user its NEEDS lines, never a builder;
+  once fixed, `job reverify <id>` (same commit and round), then **verify**. The verifier replies `VERIFY: NOT RUN …` → `job task <id>` again.
 - **approve**: `ESCALATE` → `job advance <id> needs-human`. `APPROVE` → `job
   task <id>`; for `TASK: merge <service> <command>` run that command in the
   background (it waits for GitHub Actions, up to `ci_wait_minutes`), then `job
@@ -136,7 +136,7 @@ Show `gh issue list --label factory --state open` and `job summary`.
 
 1. `factory/bin/verify preflight`; BLOCKED → tell the user why in one line (jobs still run;
    the local check needs it fixed). Then `job queue <sid>`: lines are `action issue job stage
-   note`. Start every `resume`, `retry` (`job retry <id>`, then **verify**) and `new` line (`new`
+   note`. Start every `resume`, `retry`/`reverify` (`job reverify <id>`, then **verify**) and `new` line (`new`
    → `job create <n>`, then intake); `hold` waits for a slot; `busy` is another session's;
    `wait`, `skip` and `task` (driven from the task's root repo) need nothing.
 2. Each time a job finishes, run the queue again and start what it allows.
@@ -169,7 +169,7 @@ Work out what the user wants (ask which job when unclear); state changes go thro
   in the background: it merges like an APPROVE. A PR they merged themselves needs nothing.
 - **Reference project** named mid-run: `job ref <n> <path>`.
 - **Reject** a waiting job: `job reject <n> <<'EOF' <reason> EOF`.
-- **Environment fixed** after a skipped local check: `job retry <n>`, then **verify**.
+- **Environment fixed** after a skipped local check: `job reverify <n>`, then **verify**.
 - **Answer** to a `needs-info` question: post it on the issue in their words
   (`gh issue comment <n> --body …`), then `job advance <n> intake`.
 - **A new feature**: write a short issue (title, what, why, acceptance) from

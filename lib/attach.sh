@@ -84,5 +84,10 @@ if (( FIRST )); then
   (cd "$TARGET" && mvn -B -ntp -q dependency:go-offline >/dev/null 2>&1) \
     || warn "mvn dependency:go-offline failed; the offline gate may fail until 'mvn verify' ran once here"
 fi
+if grep -qE '^COPY .*target/[^ ]*\.jar' "$TARGET/Dockerfile" 2>/dev/null && ! grep -qiE '^FROM .+ AS build' "$TARGET/Dockerfile"; then
+  warn "Dockerfile copies a prebuilt target/*.jar: 'docker compose --build' packs whatever jar is there,
+  not the checkout. Take the multi-stage Dockerfile and .dockerignore from
+  ~/.config/software-factory/templates/java/skeleton/ (dev-rebuild runs mvn package first until then)"
+fi
 echo "$STAMP" > "$TARGET/factory/.stamp"
 echo "factory $([[ $FIRST == 1 ]] && echo attached to || echo upgraded in) $TARGET (base $BASE; nothing to commit)"

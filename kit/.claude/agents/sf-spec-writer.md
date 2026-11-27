@@ -127,7 +127,14 @@ query), test user (`admin`, `manager`, `user` or `basic`), the exact JSON
 body, the expected status and the response fields that must come back (with
 values where known). Every acceptance criterion visible over HTTP has a step;
 add one error case per new rule and a 403 for each new permission. The
-database starts empty, so create what a step needs first. `none` only for
+database starts empty, so create what a step needs first. When a step relies
+on another service the task doesn't change (it runs in the development stack
+from its own image), and on a commit of it that may be recent (a merged PR),
+put one line per such service first in this section:
+`REQUIRES: <service> <commit sha> (PR #<n>)`, the commit from `git -C
+<main checkout>/../<service> log origin/<base>`. The factory checks the
+running container has it before any local check, so never only mention such
+a dependency under Assumptions. `none` only for
 changes not visible over HTTP (the service is still booted, which proves
 wiring and migrations).
 

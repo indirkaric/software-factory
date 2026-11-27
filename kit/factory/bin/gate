@@ -7,6 +7,8 @@ Usage:
   gate <job-id> --merge    same, as round-N/merge-checks.md (job merge runs it)
   gate --hook              builder Stop hook: run the checks once, exit 2 on failure
 
+When an earlier round's gate passed on the same commit with the same checks.sh and config.json,
+the gate copies that checks.md (with a `REUSED FROM round-<N> (<sha>)` line) and passes at once.
 When the builder's Stop hook already ran checks.sh on the same commit, with a
 clean tree and the same checks.sh and config.json, the gate reuses that run
 instead of building again (never for --merge, which runs after syncing with the
@@ -84,6 +86,19 @@ def reused_run(round_dir, worktree, commit):
     return None
 
 
+def earlier_pass(job_id, rnd, commit):
+    """An earlier round's checks.md that passed on exactly this commit with the same checks:
+    (round, its text) or None. A round over an unchanged commit doesn't pay for the gate again."""
+    for n in range(rnd - 1, 0, -1):
+        f = FACTORY / "jobs" / job_id / f"round-{n}" / "checks.md"
+        if not f.exists():
+            continue
+        head = dict(l.split(": ", 1) for l in f.read_text().split("\n\n", 1)[0].splitlines() if ": " in l)
+        if head.get("GATE") == "PASS" and head.get("COMMIT") == commit and head.get("CHECKS") == checks_sha():
+            return n, f.read_text()
+    return None
+
+
 def run_checks(worktree):
     start = time.monotonic()
     res = subprocess.run(["bash", str(CHECKS)], cwd=worktree, capture_output=True, text=True)
@@ -97,6 +112,13 @@ def gate(job_id, merge):
         die(f"{job_id} hasn't started a build round")
     round_dir = FACTORY / "jobs" / job_id / f"round-{job['round']}"
     commit = git(worktree, "rev-parse", "HEAD").strip()
+    earlier = None if merge or not clean(worktree) else earlier_pass(job_id, job["round"], commit)
+    if earlier:
+        n, text = earlier
+        head, _, body = text.partition("\n\n")
+        (round_dir / "checks.md").write_text(f"{head}\nREUSED FROM round-{n} ({commit[:7]})\n\n{body}")
+        print(f"GATE: PASS ({job_id} round {job['round']}, REUSED FROM round-{n}: same commit {commit[:7]})")
+        sys.exit(0)
     protected = protected_changes(worktree)
     reused = None if merge else reused_run(round_dir, worktree, commit)
     if reused:
@@ -114,7 +136,7 @@ def gate(job_id, merge):
         f"Commit {commit[:7]}" + (", synced with the latest main before merging" if merge else ""),
     ]
     (round_dir / f"{name}.md").write_text(
-        f"GATE: {verdict}\nCOMMIT: {commit}\n\n"
+        f"GATE: {verdict}\nCOMMIT: {commit}\nCHECKS: {checks_sha()}\n\n"
         "## Summary\n" + "\n".join(f"- {s}" for s in summary) + "\n\n"
         "## Protected paths\n"
         + ("\n".join(f"- {p}" for p in protected) if protected else "None changed.")

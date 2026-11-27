@@ -112,6 +112,11 @@ Leave classes and implementation to the spec writer.
 ## Why
 Two or three sentences on the decision, citing the code you looked at.
 
+## Behaviour change
+For ACCEPT only: what existing callers will see differently (a field no
+longer returned by default, a status that changes, a stricter validation),
+one bullet each, or `none`. The factory puts it in the PR description.
+
 ## Questions
 For NEEDS-INFO only: numbered questions for the author.
 ```

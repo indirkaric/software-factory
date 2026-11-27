@@ -13,13 +13,22 @@ Usage:
   verify <job> publish                    after the merge: commit + push new permissions to the dev repo
   verify gc                               clean up apps of finished, dead or stale jobs (any session)
   verify ps                               what the factory runs right now, on which ports
-  verify preflight                        can a local check run now (dev repo, docker, free infra
-                                          ports)? PREFLIGHT: OK, or BLOCKED with the reasons (exit 3)
+  verify preflight [<job>]                can a local check run now (dev repo, docker, free infra
+                                          ports; with a job: every service its task's specs REQUIRE
+                                          runs an image with that commit)? PREFLIGHT: OK, or
+                                          PREFLIGHT: BLOCKED <first reason>, `- ` reasons and
+                                          `NEEDS:` lines (exit 3)
 
 A task is a feature across services (factory/bin/job: task.json in the root job's folder);
 a job without one is a task of one. `up` refuses until every job of the task is in verify.
 Each app's `client.<name>.base-uri` that names another app of the run is pointed at that
-app's port. Services next to this repo whose application.yaml calls a changed service
+app's port; any other client at the service's published port and prefix from the development
+repo's platform.md (`UP: BLOCKED`, exit 3, when platform.md lacks it). A job whose spec has
+`REQUIRES: <service> <commit>` lines (job.json `requires`) needs that service's container to
+run an image labeled org.opencontainers.image.revision with the commit (`dev-rebuild <service>`
+in the development repo); else `up` stops with PREFLIGHT: BLOCKED (exit 3). The report is
+<root job>/round-<N>/verify-attempt-<k>.md; `gc` also reports service containers that run an
+image older than their base branch (STALE lines; it never touches them). Services next to this repo whose application.yaml calls a changed service
 (`client: <service>:`) also run, from origin/<their base branch>, so the check sees
 whether the change breaks a caller.
 
@@ -116,10 +125,14 @@ def keycloak():
     return f"http://localhost:{dev_env('AUTH_PORT', '8080')}/realms/{REALM}"
 
 
+COMPOSE_FILES = ("docker-compose.yml", "docker-compose.override.yml", "docker-compose.services.yml")
+
+
 def compose(*args, check=True):
+    """docker compose in the development repo with all its files: never a subset, which would
+    recreate db and auth without their host ports (the override) or miss the services."""
     d = dev_dir()
-    files = ["-f", "docker-compose.yml"] + (["-f", "docker-compose.override.yml"]
-                                           if (d / "docker-compose.override.yml").exists() else [])
+    files = [a for f in COMPOSE_FILES if (d / f).exists() for a in ("-f", f)]
     res = subprocess.run(["docker", "compose", *files, *args], cwd=d, capture_output=True, text=True)
     if check and res.returncode != 0:
         die(f"docker compose {' '.join(args)} failed: {(res.stderr or res.stdout).strip()[-800:]}")
@@ -142,6 +155,90 @@ def port_busy(port):
             return False
         except OSError:
             return True
+
+
+# --- the development stack's containers and the platform registry ---------------------
+
+REVISION = "org.opencontainers.image.revision"
+
+
+def platform():
+    """{service: (port, path)} from the development repo's platform.md (Service | … | Port | Base URI)."""
+    path = dev_dir() / "platform.md"
+    out = {}
+    if not path.exists():
+        return out
+    for line in path.read_text().splitlines():
+        cells = [c.strip(" `") for c in line.strip().strip("|").split("|")]
+        if len(cells) >= 4 and cells[2].isdigit() and cells[0] and cells[0] != "Service":
+            out[cells[0]] = (int(cells[2]), urllib.parse.urlparse(cells[3]).path or "/")
+    return out
+
+
+def container_revision(service):
+    """(running, git sha the container's image was built from or ''): the image label
+    dev-rebuild and the skeleton Dockerfile set."""
+    cid = compose("ps", "-q", "--status", "running", service, check=False).stdout.split()
+    if not cid:
+        return False, ""
+    r = subprocess.run(["docker", "inspect", "-f", f'{{{{index .Config.Labels "{REVISION}"}}}}', cid[0]],
+                       capture_output=True, text=True)
+    rev = r.stdout.strip()
+    return True, "" if rev in ("", "<no value>") else rev
+
+
+def has_commit(repo, sha):
+    git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True)
+    if git("cat-file", "-e", f"{sha}^{{commit}}").returncode != 0:
+        git("fetch", "-q", "origin")
+    return git("cat-file", "-e", f"{sha}^{{commit}}").returncode == 0
+
+
+def requires_problems(members):
+    """What the task's specs require of services that run in docker (job.json `requires`, from
+    spec.md `REQUIRES:` lines) and the running containers don't have: [(needs, reason)]."""
+    changed = {m["service"] for m in members}
+    out = []
+    for m in members:
+        for req in json.loads(Path(m["jobjson"]).read_text()).get("requires") or []:
+            svc, sha = req["service"], req["commit"]
+            if svc in changed:  # it runs from its job branch in this check
+                continue
+            need = f"{svc} >= {sha[:7]}" + (f" ({req['note']})" if req.get("note") else "")
+            repo = REPO.parent / svc
+            running, rev = container_revision(svc)
+            if not running:
+                out.append((need, f"{svc} isn't running in the development stack → dev-rebuild {svc}"))
+            elif not rev:
+                out.append((need, f"{svc}'s image has no {REVISION} label (built without dev-rebuild), "
+                                  f"can't tell if it has {sha[:7]} → dev-rebuild {svc}"))
+            elif not (repo / ".git").exists() or not has_commit(repo, sha) or not has_commit(repo, rev):
+                out.append((need, f"can't compare {svc} {rev[:7]} with {sha[:7]}: no clone at {repo} "
+                                  "or the commits are unknown there"))
+            elif subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor", sha, rev]).returncode:
+                out.append((need, f"{svc} runs {rev[:7]}, needs {sha[:7]} → dev-rebuild {svc}"))
+    return out
+
+
+def stale_containers():
+    """Service containers whose image isn't built from their repo's origin/<base> HEAD."""
+    d = dev_dir()
+    if not (d / "docker-compose.services.yml").exists():
+        return []
+    out = []
+    for svc in re.findall(r"^  ([a-z0-9][a-z0-9-]*):\s*$", (d / "docker-compose.services.yml").read_text(), re.M):
+        running, rev = container_revision(svc)
+        repo = REPO.parent / svc
+        if not running or not (repo / ".git").exists():
+            continue
+        ref = base_ref(repo)
+        head = subprocess.run(["git", "-C", str(repo), "rev-parse", ref], capture_output=True, text=True).stdout.strip()
+        if not rev:
+            out.append(f"{svc}: image has no revision label (built without dev-rebuild) → dev-rebuild {svc}")
+        elif head and has_commit(repo, rev) and subprocess.run(
+                ["git", "-C", str(repo), "merge-base", "--is-ancestor", head, rev]).returncode:
+            out.append(f"{svc}: container runs {rev[:7]}, {ref} is {head[:7]} → dev-rebuild {svc}")
+    return out
 
 
 # --- leases ---------------------------------------------------------------------------
@@ -232,13 +329,21 @@ def infra_problems():
     return problems
 
 
-def preflight():
-    """Can a local check run now? Exit 0 with PREFLIGHT: OK, else exit 3 with the reasons."""
+def preflight(job_id=None):
+    """Can a local check run now? Exit 0 with PREFLIGHT: OK, else exit 3 with the reasons.
+    With a job: also every service its task's specs REQUIRE runs a new enough image."""
     problems = infra_problems()
+    needs = []
+    if job_id and not problems:
+        unmet = requires_problems(task(job_id)[2])
+        needs = [n for n, _ in unmet]
+        problems = [r for _, r in unmet]
     if problems:
-        print("PREFLIGHT: BLOCKED")
+        print("PREFLIGHT: BLOCKED " + problems[0])
         for p in problems:
             print(f"- {p}")
+        for n in needs:
+            print(f"NEEDS: {n}")
         sys.exit(3)
     print("PREFLIGHT: OK")
 
@@ -283,6 +388,9 @@ def gc(quiet=False, infra=True):
             release(p, l)
         if gone or not quiet:
             print(f"verify: cleaned {len(gone)} stale app(s)")
+        if not quiet and infra_running():
+            for line in stale_containers():  # reported only: the user's containers, never touched
+                print(f"STALE: {line}")
         if infra:
             infra_maybe_down()
 
@@ -370,7 +478,10 @@ def up(job_id, extra):
     if not_ready:
         die("the task is checked when every job is in verify; not yet: " + ", ".join(not_ready))
     # The report path and the commits come first: sf-verifier writes the report even when booting fails.
-    report = tdir / f"verify-{len(list(tdir.glob('verify-[0-9]*.md'))) + 1}.md"
+    # One attempt file per check in the root job's round; task-result copies it to round-<N>/verify.md.
+    rd = members[-1]["logdir"]
+    rd.mkdir(parents=True, exist_ok=True)
+    report = rd / f"verify-attempt-{len(list(rd.glob('verify-attempt-*.md'))) + 1}.md"
     commits = {m["service"]: subprocess.run(["git", "-C", str(m["worktree"]), "rev-parse", "HEAD"],
                                             capture_output=True, text=True).stdout.strip() for m in members}
     (tdir / "verify-run.json").write_text(json.dumps({"report": str(report), "commits": commits}, indent=2))
@@ -379,6 +490,19 @@ def up(job_id, extra):
         die("docker isn't running", 3)
     if not (dev_dir() / "docker-compose.yml").exists():
         die(f"no development repo at {dev_dir()} (software-factory new development dev)", 3)
+    unmet = requires_problems(members)
+    if unmet:  # the environment, not the code: the verifier reports SKIP + FAULT: environment
+        print("PREFLIGHT: BLOCKED " + unmet[0][1])
+        for n, r in unmet:
+            print(f"- {r}\nNEEDS: {n}")
+        sys.exit(3)
+    registry = platform()
+    early = [f"client.{n} of {m['service']} has no entry in {dev_dir() / 'platform.md'}" for m in members
+             for n in clients(m["worktree"]) if n not in registry and n not in {x["service"] for x in members}]
+    if early:  # before any build: a client the host can't reach would only show up as a 503
+        print("UP: BLOCKED " + "; ".join(early))
+        print(f"NEEDS: {early[0].split(' of ')[0]} in platform.md")
+        sys.exit(3)
     gc(quiet=True, infra=False)
     down_task(tid, quiet=True)
     owner = members[-1]["jobjson"]  # the root job: callers live as long as its check
@@ -402,6 +526,24 @@ def up(job_id, extra):
         apps.append({"service": repo.name, "key": "base-" + norm(tid), "wt": wt, "jar": jar, "owner": owner,
                      "log": tdir / f"verify-{norm(repo.name)}.log", "kind": "caller", "repo": str(repo),
                      "checkout": str(wt)})
+    blocked = []
+    for a in apps:
+        for name in clients(a["wt"]):
+            if name not in {x["service"] for x in apps} and name not in registry:
+                blocked.append(f"client.{name} of {a['service']} has no entry in {dev_dir() / 'platform.md'}")
+    if blocked:
+        for a in apps:
+            if a.get("checkout"):
+                subprocess.run(["git", "-C", a["repo"], "worktree", "remove", "--force", a["checkout"]],
+                               capture_output=True)
+        print("UP: BLOCKED " + "; ".join(blocked))
+        print(f"NEEDS: {blocked[0].split(' of ')[0]} in platform.md")
+        sys.exit(3)
+    for a in apps:  # the same service as a docker container: harmless, but say which one the check calls
+        running, rev = container_revision(a["service"])
+        if running:
+            print(f"CONTAINER: {a['service']} also runs in docker ({rev[:7] or 'no revision label'}); "
+                  "the check calls the host app below, not the container")
     with locked():
         infra_up()
         picked = []
@@ -412,26 +554,31 @@ def up(job_id, extra):
                 sync_permissions(a["wt"])
         ports = {a["service"]: a["port"] for a in apps}
         for a in apps:
-            args = [f"--server.port={a['port']}",
-                    f"--spring.security.oauth2.resourceserver.jwt.jwk-set-uri={keycloak()}/protocol/openid-connect/certs"]
+            props = {"server.port": a["port"],
+                     "spring.security.oauth2.resourceserver.jwt.jwk-set-uri": f"{keycloak()}/protocol/openid-connect/certs"}
             for name, uri in clients(a["wt"]).items():
                 if name in ports:  # call the other app of this run, not its docker alias
-                    args.append(f"--client.{name}.base-uri=http://localhost:{ports[name]}"
-                                f"{urllib.parse.urlparse(uri).path}")
+                    props[f"client.{name}.base-uri"] = f"http://localhost:{ports[name]}{urllib.parse.urlparse(uri).path}"
+                else:  # a service of the stack: its published port (the docker alias isn't reachable from the host)
+                    port, path = registry[name]
+                    props[f"client.{name}.base-uri"] = f"http://localhost:{port}{path}"
             a["db"] = db_name(a["service"], a["key"]) if (a["wt"] / "src/main/resources/liquibase").exists() else None
             if a["db"]:
                 psql(f'DROP DATABASE IF EXISTS "{a["db"]}" WITH (FORCE)')
                 psql(f'CREATE DATABASE "{a["db"]}"')
                 url = f"jdbc:postgresql://localhost:{dev_env('DB_PORT', '5432')}/{a['db']}"
                 for pool in ("readwrite", "readonly"):
-                    args += [f"--database.{pool}.url={url}", f"--database.{pool}.username={PG['user']}",
-                             f"--database.{pool}.password={PG['password']}"]
-            for e in extra:
+                    props.update({f"database.{pool}.url": url, f"database.{pool}.username": PG["user"],
+                                  f"database.{pool}.password": PG["password"]})
+            for e in extra:  # --arg wins over what up set (a repeated property would become a list)
                 svc, sep, kv = e.partition(":")
                 if not sep or "=" in svc:
-                    args.append(f"--{e}")
-                elif svc == a["service"]:
-                    args.append(f"--{kv}")
+                    kv = e
+                elif svc != a["service"]:
+                    continue
+                key, _, value = kv.partition("=")
+                props[key] = value
+            args = [f"--{k}={v}" for k, v in props.items()]
             a["log"].parent.mkdir(parents=True, exist_ok=True)
             a["proc"] = subprocess.Popen(["java", "-jar", str(a["jar"]), *args], cwd=a["wt"],
                                          stdout=a["log"].open("w"), stderr=subprocess.STDOUT, start_new_session=True)
@@ -564,8 +711,8 @@ def ps():
 def main(argv):
     if argv == ["gc"]:
         gc()
-    elif argv == ["preflight"]:
-        preflight()
+    elif argv[:1] == ["preflight"] and len(argv) <= 2:
+        preflight(argv[1] if len(argv) == 2 else None)
     elif argv == ["ps"]:
         ps()
     elif len(argv) >= 2 and argv[1] == "up":

@@ -108,7 +108,7 @@ korisnike/grupe/permisije/personal access tokene.
 `docker-compose.yml` (Postgres :5432, Keycloak :8080, LocalStack :4566; Azurite i Redis na
 zahtjev), realm `factory` sa grupama Administrator/Manager/Employee i korisnicima `admin`,
 `manager`, `user`, `basic` (lozinka = ime), bucket
-`factory-local`, i `dev-*` aliasi (`dev-up`, `dev-run <servis>`, `dev-token`, `dev-psql`,
+`factory-local`, i `dev-*` aliasi (`dev-up`, `dev-rebuild <servis>`, `dev-token`, `dev-psql`,
 `dev-logs`, `dev-help`). Bez e2e testova. Detalji: `templates/dev/README.md`.
 
 Ako ti već radi drugi stack na istim portovima, zaustavi ga ili promijeni `DB_PORT`,

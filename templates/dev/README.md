@@ -60,7 +60,7 @@ both are healthy.
 |---|---|
 | A service from the IDE | `docker compose up -d db auth` (+ `aws` / `redis` if it uses them) |
 | Only the database | `docker compose up -d db` |
-| One service in Docker | `dev-run invoice` (builds the jar and the image first) |
+| One service in Docker | `dev-rebuild invoice` (builds its image from the checkout, restarts only it) |
 | The whole platform | `dev-up-all` |
 
 ## The same with dev-* aliases
@@ -69,7 +69,7 @@ both are healthy.
 |---|---|
 | `dev-up [svc..]` | `db auth aws` (+ the services named), waits for healthy, applies the realm's permissions |
 | `dev-up-all` | everything, waits for healthy |
-| `dev-run <svc>` | `mvn package ../<svc>`, build its image, start it |
+| `dev-rebuild <svc>` | rebuild `../<svc>` at its HEAD (image labeled with the commit) and restart only it; never a raw `docker compose -f …` |
 | `dev-redis` / `dev-azure` | start Redis / Azurite |
 | `dev-stop <svc>` | stop one container |
 | `dev-down` | stop everything, data kept |
@@ -86,7 +86,7 @@ the realm changed (new permissions): it re-applies `factory-realm.json` to Keycl
 ## Run a service
 
 ```bash
-dev-run invoice                                  # in Docker
+dev-rebuild invoice                                # in Docker
 dev-curl http://localhost:50001/invoice/v1/...   # call it with an admin token
 ```
 

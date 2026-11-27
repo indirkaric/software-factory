@@ -34,3 +34,9 @@ Verified: both roles build with `mvn -o verify` (tests, JaCoCo 0.80, checkstyle)
 (`proxy-skeleton/`, also with `--calls` against a registered service) boots, with health/swagger
 200 and 401 without auth. The persistence
 role has not been booted against Postgres.
+
+Dockerfile (both roles): multi-stage. A `maven:3.9-amazoncorretto-17` build stage runs
+`mvn package` on the checkout (pom.xml and `dependency:go-offline` first, `~/.m2` as a BuildKit
+cache mount), so an image never carries a stale `target/*.jar`; `ARG GIT_SHA` →
+`LABEL org.opencontainers.image.revision` (set by `dev-rebuild`, read by `verify preflight`).
+`.dockerignore` sends only `pom.xml` and `src/`. Verified: both roles build and the image holds the jar.

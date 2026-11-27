@@ -27,7 +27,10 @@ Usage:
                                  (before every intake spawn)
   job reserve <job> changeset    the job's Liquibase changeset number (reserved once, never shared)
   job retry <job>                needs-human → verify, when the local check was skipped (VERIFY: SKIP)
-                                 and `verify preflight` passes now; same round, no rebuild
+                                 and `verify preflight <job>` passes now; same round, no rebuild
+  job reverify <job>             the environment was fixed after a SKIP: the task's jobs (in verify,
+                                 or needs-human after SKIPs) are checked again on the same commit in
+                                 the same round; refused while `verify preflight <job>` blocks
   job reject <job>               needs-info or needs-human → rejected, with your reason (stdin) as rejection.md;
                                  any unfinished job once its issue is closed or its claim expired
   job agents <job> <json>        record the routed agent set (called by factory/bin/route)
@@ -37,7 +40,10 @@ Usage:
                                  issue there (what to change on stdin) and a job on its own branch,
                                  both part of this job's task
   job task <job>                 the task's jobs in merge order and `TASK: <what to do next>`
-  job task-result <job>          after sf-verifier: copy the task check's verdict to each job, advance them
+  job task-result <job>          after sf-verifier: copy the task check's verdict to each job, advance them.
+                                 PASS → approve; FAIL → build (+1 round) for the services at FAULT;
+                                 SKIP or FAULT: environment (with NEEDS: lines) → stays in verify,
+                                 same round (`job reverify` once fixed); the 3rd SKIP → needs-human
 
 <job> is a job id (004-dark-mode) or an issue number (12).
 
@@ -504,6 +510,25 @@ def other_services(spec):
     return [n for n in names if n and n.lower() != "none"]
 
 
+def spec_requires(spec):
+    """spec.md `REQUIRES: <service> <commit> [(note)]` lines → [{service, commit, note}]: what the
+    local check needs from a service that runs in the development stack (verify preflight checks it)."""
+    out = []
+    for m in re.finditer(r"^\W*REQUIRES:\s*`?([a-z0-9][a-z0-9-]*)`?\s+`?([0-9a-f]{7,40})`?\s*(.*)$",
+                         spec.read_text(), re.M):
+        svc, sha, note = m.group(1), m.group(2), m.group(3).strip(" ()`")
+        repo = REPO.parent / svc
+        require((repo / ".git").exists(), f"spec.md REQUIRES {svc}, but there is no clone at {repo}")
+        known = run(["git", "cat-file", "-e", f"{sha}^{{commit}}"], cwd=repo, check=False).returncode == 0
+        if not known:
+            run(["git", "fetch", "-q", "origin"], cwd=repo, check=False, retry=True)
+            known = run(["git", "cat-file", "-e", f"{sha}^{{commit}}"], cwd=repo, check=False).returncode == 0
+        require(known, f"spec.md REQUIRES {svc} {sha}: no such commit in {repo} (fetched); resume the "
+                       "spec writer with this line")
+        out.append({"service": svc, "commit": sha, "note": note or None})
+    return out
+
+
 def write_task_md(tdir, task):
     rows = []
     for m in task["members"]:
@@ -597,6 +622,22 @@ def cmd_task(job):
     print(f"TASK: {task_next(members)}")
 
 
+MAX_SKIPS = 3  # environment SKIPs of one round before the job goes to a human
+
+
+def needs_lines(path):
+    """The `NEEDS:` lines of a report's header: what the environment lacks."""
+    head = path.read_text().split("\n\n", 1)[0]
+    return [m.strip() for m in re.findall(r"^NEEDS:\s*(.+)$", head, re.M)]
+
+
+def skips(repo, j):
+    """Environment SKIPs recorded in the job's current round since the last `job reverify` from needs-human."""
+    rd = Path(repo) / "factory/jobs" / j["id"] / f"round-{j['round']}"
+    n = sum(first_line(p) == "VERIFY: SKIP" for p in rd.glob("verify-attempt-*.md"))
+    return n - (j.get("skips_seen") or {}).get(str(j["round"]), 0)
+
+
 def cmd_task_result(job):
     tdir = task_of(job)
     runf = tdir / "verify-run.json"
@@ -606,6 +647,16 @@ def cmd_task_result(job):
     require(report.exists(), f"sf-verifier hasn't written {report}")
     verdict = re.sub(r"^VERIFY:\s*", "", first_line(report) or "")
     require(verdict in {"PASS", "FAIL", "SKIP"}, f"{report.name} starts with {first_line(report)!r}")
+    fault = {s.strip() for s in header(report).get("FAULT", "").split(",") if s.strip()}
+    needs = needs_lines(report)
+    if "environment" in fault:
+        # The environment failed, not the code: never a build round. A FAIL that blames it is a SKIP.
+        require(needs, f"{report.name} says FAULT: environment without a `NEEDS:` line; resume sf-verifier: "
+                       "add one NEEDS: line per missing precondition (e.g. NEEDS: identity >= 8a5d589)")
+        verdict, fault = "SKIP", {"environment"}
+    elif verdict == "SKIP":
+        require(needs, f"{report.name} says SKIP without `FAULT: environment` and `NEEDS:` lines; resume "
+                       "sf-verifier: name what the environment lacks, one NEEDS: line each")
     require(verdict != "PASS" or section(report, "Proof"),
             f"{report.name} says PASS without a `## Proof` section; resume sf-verifier: write the request "
             "and response of every Local check step under ## Proof, then reply")
@@ -620,8 +671,8 @@ def cmd_task_result(job):
                 + (f", {len(failed)} of them ❌" if failed else "")
                 + f" for {steps} Local check step(s) in the task's specs; resume sf-verifier: run every "
                 "step, one ✅ block each, then reply")
-    fault = {s.strip() for s in header(report).get("FAULT", "").split(",") if s.strip()}
-    body = report.read_text().split("\n\n", 1)[1] if "\n\n" in report.read_text() else ""
+    text = report.read_text()
+    body = text.split("\n\n", 1)[1] if "\n\n" in text else ""
     members = task_members(job)
     refused = False
     for fh in _locks.values():  # each job's own script advances it below
@@ -631,15 +682,27 @@ def cmd_task_result(job):
         if j["stage"] != "verify":
             print(f"{svc} {j['id']}: {j['stage']}, not in verify; unchanged")
             continue
+        rd = Path(repo) / "factory/jobs" / j["id"] / f"round-{j['round']}"
+        rd.mkdir(parents=True, exist_ok=True)
+        head = (f"VERIFY: {verdict}\nCOMMIT: {info['commits'].get(svc, '')}\n"
+                + (f"FAULT: {', '.join(sorted(fault))}\n" if fault else "")
+                + "".join(f"NEEDS: {n}\n" for n in needs) + f"REPORT: {report}\n\n")
+        # The root job's attempt file is the report itself: rewritten with the verdict that counts.
+        attempt = report if report.parent == rd else rd / f"verify-attempt-{len(list(rd.glob('verify-attempt-*.md'))) + 1}.md"
+        attempt.write_text(head + body)
+        (rd / "verify.md").write_text(head + body)  # always the latest attempt
         if verdict == "FAIL" and fault and svc not in fault:
             print(f"{svc} {j['id']}: not at fault; stays in verify until the task is checked again")
             continue
-        rd = Path(repo) / "factory/jobs" / j["id"] / f"round-{j['round']}"
-        rd.mkdir(parents=True, exist_ok=True)
-        (rd / "verify.md").write_text(f"VERIFY: {verdict}\nCOMMIT: {info['commits'].get(svc, '')}\n"
-                                      f"REPORT: {report}\n\n{body}")
-        target = {"PASS": "approve", "SKIP": "needs-human"}.get(
-            verdict, "build" if j["round"] < j["round_limit"] else "needs-human")
+        if verdict == "SKIP":
+            n = skips(repo, j)
+            if n < MAX_SKIPS:
+                print(f"{svc} {j['id']}: verify, round {j['round']} unchanged (environment SKIP {n} of "
+                      f"{MAX_SKIPS}); needs: {'; '.join(needs)}. Fix it, then `job reverify {j['id']}`")
+                continue
+            target = "needs-human"
+        else:
+            target = {"PASS": "approve"}.get(verdict, "build" if j["round"] < j["round_limit"] else "needs-human")
         res = subprocess.run([str(Path(repo) / "factory/bin/job"), "advance", j["id"], target],
                              cwd=repo, capture_output=True, text=True)
         print(f"{svc} {j['id']}: {target}" if res.returncode == 0
@@ -648,6 +711,29 @@ def cmd_task_result(job):
     if refused:
         # The orchestrator must tell a refusal from success: check each job's stage in job.json.
         sys.exit(1)
+
+
+def cmd_reverify(job):
+    """Check the same commit again in the same round, after the environment was fixed: every job of
+    the task that is in verify after a SKIP (or in needs-human because of SKIPs) is ready for a new
+    sf-verifier run. Refused while `verify preflight <job>` still blocks: no verifier is wasted."""
+    members = task_members(job)
+    ok, reasons = preflight(job["id"])
+    require(ok, "the local check still can't run:\n" + "\n".join(f"- {r}" for r in reasons))
+    for fh in _locks.values():
+        fh.close()
+    _locks.clear()
+    for svc, repo, j in members:
+        if j["stage"] == "needs-human":
+            res = subprocess.run([str(Path(repo) / "factory/bin/job"), "retry", j["id"]],
+                                 cwd=repo, capture_output=True, text=True)
+            print(f"{svc} {j['id']}: " + ("verify" if res.returncode == 0 else
+                                          f"stays needs-human: {(res.stderr or res.stdout).strip()}"))
+        elif j["stage"] == "verify":
+            print(f"{svc} {j['id']}: verify, round {j['round']}, attempt {skips(repo, j) + 1}")
+        else:
+            print(f"{svc} {j['id']}: {j['stage']}; unchanged")
+    print(f"TASK: {task_next(task_members(load(job['id'])))}")
 
 
 def local_check_steps(spec):
@@ -666,9 +752,11 @@ def verify_skipped(job):
     return header(vf).get("COMMIT") == git(job, "rev-parse", "HEAD", check=False).stdout.strip()
 
 
-def preflight():
-    """(ok, reasons) from `verify preflight`: can a local check run now?"""
-    res = subprocess.run([str(BIN / "verify"), "preflight"], capture_output=True, text=True)
+def preflight(job_id=None):
+    """(ok, reasons) from `verify preflight [<job>]`: can a local check run now (with a job: and
+    does every service its task's specs REQUIRE run a new enough image)?"""
+    res = subprocess.run([str(BIN / "verify"), "preflight", *([job_id] if job_id else [])],
+                         capture_output=True, text=True)
     lines = [l[2:] for l in res.stdout.splitlines() if l.startswith("- ")]
     return res.returncode == 0, lines or [(res.stderr or res.stdout).strip()]
 
@@ -724,6 +812,24 @@ def next_round(job):
     job["gate"] = None
     job["reviews"] = {}
     copy_reference(job)
+
+
+def reuse_reviews(job, commit):
+    """Copy every review that passed in an earlier round on exactly this commit into this round,
+    with a `REUSED FROM round-<N> (<sha>)` line: the orchestrator spawns only the missing ones."""
+    rd = round_dir(job)
+    for r in reviewers(job):
+        if (rd / f"review-{r}.md").exists():
+            continue
+        for n in range(job["round"] - 1, 0, -1):
+            src = round_dir(job, n) / f"review-{r}.md"
+            if ((job.get("shas") or {}).get(str(n)) or {}).get("reviews") == commit and \
+                    first_line(src) == "VERDICT: PASS":
+                first, _, rest = src.read_text().partition("\n")
+                (rd / f"review-{r}.md").write_text(f"{first}\nREUSED FROM round-{n} ({commit[:7]})\n{rest}")
+                job["reviews"][r] = "PASS"
+                print(f"REUSED: review-{r}.md from round-{n} (same commit {commit[:7]})")
+                break
 
 
 def advance(job, stage, how=None):
@@ -813,6 +919,7 @@ def advance(job, stage, how=None):
             require(not missing, f"the spec needs changes in {', '.join(missing)}: ask the user; all yes: "
                                  f"`job link {job['id']} <service>` for each, with its line on stdin; any no: "
                                  f"`job advance {job['id']} needs-human`\n" + "\n".join(lines))
+            job["requires"] = spec_requires(d / "spec.md")
             clash = table_clash(job)
             require(not clash, "WAIT: " + "; ".join(f"{j} is changing {', '.join(t)}" for j, t in clash.items())
                     + f". {job['id']} stays in spec until that job is merged or stops.")
@@ -858,7 +965,9 @@ def advance(job, stage, how=None):
                 "checks.md was written for another commit; run the gate again")
         if stage == "review":
             require(h.get("GATE") == "PASS", "the gate didn't pass")
+            job.setdefault("shas", {}).setdefault(str(job["round"]), {})["gate"] = h["COMMIT"]
             job["reviews"] = {r: "pending" for r in reviewers(job)}
+            reuse_reviews(job, h["COMMIT"])
         else:
             require(h.get("GATE") == "FAIL", "the gate passed")
             last = job["round"] >= job["round_limit"]
@@ -872,6 +981,9 @@ def advance(job, stage, how=None):
 
     elif old == "review":
         check_reviews_done(job)
+        # The commit the reviewers read: a later round on the same commit reuses their PASS.
+        job.setdefault("shas", {}).setdefault(str(job["round"]), {})["reviews"] = \
+            git(job, "rev-parse", "HEAD").stdout.strip()
         changes = [r for r, v in job["reviews"].items() if v == "CHANGES"]
         if stage == "verify":
             require(not changes, f"reviews want CHANGES: {', '.join(changes)}")
@@ -905,12 +1017,19 @@ def advance(job, stage, how=None):
                                          f"`{h.get('COMMIT', '')[:7]}`. Request → response of every step:\n\n{proof}")
         elif stage == "build":
             require(verdict == "FAIL", f"verify.md says VERIFY: {verdict}, not FAIL")
+            require("environment" not in h.get("FAULT", ""), "verify.md blames the environment, not the code: "
+                    f"the job stays in verify; fix it, then `job reverify {job['id']}`")
             require(job["round"] < job["round_limit"], f"round {job['round']} of {job['round_limit']}: go to needs-human")
             next_round(job)
         else:
             require(verdict in {"FAIL", "SKIP"}, f"verify.md says VERIFY: {verdict}")
-            escalate(job, f"The local check {'could not run' if verdict == 'SKIP' else 'failed in the last round'}. "
-                          f"See round-{job['round']}/verify.md." + ("\n\n" + (section(vf, "Why") or "") if verdict == "SKIP" else ""))
+            needs = needs_lines(vf)
+            escalate(job, (f"The local check could not run {skips(REPO, job)} times: the environment lacks "
+                           "what the check needs. Free or start it, then `job reverify` checks the same "
+                           "commit again (no rebuild).\n\n" + "\n".join(f"- NEEDS: {n}" for n in needs)
+                           if verdict == "SKIP" else "The local check failed in the last round.")
+                          + f"\n\nSee round-{job['round']}/verify.md."
+                          + ("\n\n" + (section(vf, "Why") or "") if verdict == "SKIP" else ""))
 
     elif old == "approve":
         want = "APPROVE" if stage == "merging" else "ESCALATE"
@@ -921,7 +1040,7 @@ def advance(job, stage, how=None):
     elif old == "needs-human" and stage == "verify":
         require(verify_skipped(job), f"{job['id']} didn't escalate because its local check was skipped "
                                      "on its current commit; use `job feedback`")
-        ok, reasons = preflight()
+        ok, reasons = preflight(job["id"])
         require(ok, "the local check still can't run:\n" + "\n".join(f"- {r}" for r in reasons))
         label("issue", job["issue"], remove=LABELS["needs_human"])
         comment("pr", job["pr"], "### Factory: retrying the local check\n\nThe environment is ready now; "
@@ -929,6 +1048,9 @@ def advance(job, stage, how=None):
         rd = round_dir(job)
         k = len(list(rd.glob("verify-skipped-*.md"))) + 1
         (rd / "verify.md").rename(rd / f"verify-skipped-{k}.md")
+        # The SKIPs so far are answered: count MAX_SKIPS afresh from here.
+        job.setdefault("skips_seen", {})[str(job["round"])] = \
+            sum(first_line(p) == "VERIFY: SKIP" for p in rd.glob("verify-attempt-*.md"))
 
     if stage == "needs-human":
         why = (d / job.get("escalation", "decision.md")).read_text().split("\n", 1)[1].strip()
@@ -1097,12 +1219,19 @@ def cmd_queue(owner=None):
             else:
                 other_rows.append(("wait", n, j["id"], j["stage"], "waiting for the author"))
         elif j["stage"] == "needs-human" and verify_skipped(j):
-            ok, reasons = preflight()
+            ok, reasons = preflight(j["id"])
             if ok and not claim_holder(j, owner):
                 running_rows.append(("retry", n, j["id"], j["stage"], "local check skipped; the environment is ready now"))
             else:
                 other_rows.append(("wait", n, j["id"], j["stage"], "local check skipped: " + reasons[0]
                                    if not ok else "another session is working on it"))
+        elif (j["stage"] == "verify" and j["round"] and not claim_holder(j, owner)
+              and first_line(round_dir(j) / "verify.md") == "VERIFY: SKIP"):
+            ok, reasons = preflight(j["id"])
+            if ok:
+                running_rows.append(("reverify", n, j["id"], j["stage"], "local check skipped; the environment is ready now"))
+            else:
+                other_rows.append(("wait", n, j["id"], j["stage"], "local check skipped: " + reasons[0]))
         elif j["stage"] == "needs-human":
             other_rows.append(("wait", n, j["id"], j["stage"], f"merge PR #{j['pr']}, or give feedback"
                                if j["pr"] else "give feedback"))
@@ -1213,6 +1342,12 @@ def cmd_merge(job):
         print(f"{job['id']}: PR #{job['pr']} is approved and green; auto_merge is off, merge it on GitHub")
         return
     try:
+        add_behaviour_change(job)
+    except Transient:
+        raise
+    except Refused as e:  # the description is a courtesy: it never blocks a green, approved merge
+        print(f"job: couldn't add the Behaviour change section to PR #{job['pr']}: {e}", file=sys.stderr)
+    try:
         gh("pr", "merge", str(job["pr"]), f"--{CONFIG['merge_method']}")
     except Transient:
         raise
@@ -1227,6 +1362,20 @@ def cmd_merge(job):
     print((pub.stdout or pub.stderr).strip().splitlines()[-1] if (pub.stdout or pub.stderr).strip() else "")
     save(advance(sync(job), "merged"))
     print(f"{job['id']}: merged PR #{job['pr']}")
+
+
+def add_behaviour_change(job):
+    """Put `## Behaviour change` (decision.md's, else intake.md's) into the PR description before the
+    squash merge, so the commit on the base branch says what existing callers will see differently."""
+    d = job_dir(job["id"])
+    text = next((t for f in ("decision.md", "intake.md") if (d / f).exists()
+                 and (t := section(d / f, "Behaviour change"))), None)
+    if not text or text.strip(" .`").lower() == "none":
+        return
+    body = gh_json("pr", "view", str(job["pr"]), "--json", "body")["body"] or ""
+    if "## Behaviour change" in body:
+        return
+    gh("pr", "edit", str(job["pr"]), "--body", f"{body.rstrip()}\n\n## Behaviour change\n\n{text}\n")
 
 
 def wait_for_ci(job):
@@ -1382,6 +1531,8 @@ def main(argv):
             cmd_task(resolve(args[0]))
         elif cmd == "task-result" and len(args) == 1:
             cmd_task_result(resolve(args[0]))
+        elif cmd == "reverify" and len(args) == 1:
+            cmd_reverify(resolve(args[0]))
         elif cmd == "advance" and len(args) == 2:
             job = advance(sync(resolve(args[0])), args[1])
             save(sync(job))

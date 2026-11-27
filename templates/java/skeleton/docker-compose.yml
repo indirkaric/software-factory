@@ -2,7 +2,7 @@
 # `factory`, started with `dev-up` there). Build the jar first: mvn -B -DskipTests package.
 #   docker compose up -d --build
 # The override file publishes the port on the host. In the development repo the same service
-# is in docker-compose.services.yml (dev-run {{service-name}}).
+# is in docker-compose.services.yml (dev-rebuild {{service-name}}).
 name: {{service-name}}
 
 services:

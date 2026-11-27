@@ -1,0 +1,4 @@
+# The image builds from pom.xml and src/ only (see Dockerfile).
+*
+!pom.xml
+!src

@@ -96,7 +96,7 @@ projekat kao primjer).
 3. privatni repo `<tvoj-račun>/invoice` + push `main`, auto-merge i squash uključeni;
 4. servis se upiše u development repo (compose, baza `invoice`, alias, registar `platform.md`).
 
-Lokalno pokretanje: `dev-run invoice`, ili iz IDE-a `mvn spring-boot:run`.
+Lokalno pokretanje: `dev-rebuild invoice`, ili iz IDE-a `mvn spring-boot:run`.
 
 ## Faza D — svakodnevni rad
 
@@ -184,7 +184,7 @@ software-factory update
 | Simptom | Rješenje |
 |---|---|
 | `could not create ... Administration: write` | novi token (A2), `software-factory setup`, `n` |
-| `VERIFY: SKIP` | Docker ne radi ili nema development repoa: `dev-up` |
+| `VERIFY: SKIP` | okruženju nešto fali (redovi `NEEDS:`): `dev-up`, ili `dev-rebuild <servis>` za zastario kontejner; pa `job reverify` (isti commit, ista runda) |
 | gate pada "offline" | u sesiji pokreni sa `FACTORY_MVN_ONLINE=1 claude` |
 | port zauzet | zaustavi drugi stack ili promijeni port u `docker-compose.override.yml` |
 | token ističe | `software-factory doctor` upozori 14 dana prije |

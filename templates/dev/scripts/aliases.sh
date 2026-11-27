@@ -11,8 +11,27 @@ dev-reset()   { read -rp "Delete ALL local data (databases, Keycloak, S3)? [y/N]
 dev-ps()      { _dc ps; }
 dev-logs()    { _dc logs -f --tail=200 "$@"; }
 dev-psql()    { _dc exec db psql -U postgres "${1:-postgres}"; }
-dev-build()   { local s="${1:?service}"; (cd "$DEV_HOME/../$s" && mvn -q -B -DskipTests package) && _dc build "$s"; }
-dev-run()     { local s="${1:?service}"; dev-build "$s" && _dc up -d --wait "$s"; }
+# All three compose files, always: a subset (-f docker-compose.yml -f docker-compose.services.yml)
+# recreates db and auth without the host ports of docker-compose.override.yml.
+_dcall() { local f a=(); for f in docker-compose.yml docker-compose.override.yml docker-compose.services.yml; do
+             [[ -f "$DEV_HOME/$f" ]] && a+=(-f "$f"); done; _dc "${a[@]}" "$@"; }
+_svcdir() { local p; p="$(grep -m1 '^PROJECTS_DIR=' "$DEV_HOME/.env" 2>/dev/null | cut -d= -f2)"
+            p="${p:-..}"; [[ "$p" = /* ]] || p="$DEV_HOME/$p"; echo "$p/$1"; }
+# Rebuild ONE service from its checkout and restart only it: the image is labeled with the commit
+# (org.opencontainers.image.revision, the factory's preflight reads it); --no-deps leaves Postgres,
+# Keycloak and LocalStack alone; --force-recreate makes the container really run the new image.
+dev-rebuild() {
+  local svc="${1:?service}" dir sha; dir="$(_svcdir "$svc")"
+  sha="$(git -C "$dir" rev-parse HEAD)" || return 1
+  if ! grep -qiE '^FROM .+ AS build' "$dir/Dockerfile"; then  # an old Dockerfile copies target/*.jar
+    (cd "$dir" && mvn -q -B -DskipTests package) || return 1
+  fi
+  _dcall build --build-arg GIT_SHA="$sha" "$svc" &&
+    _dcall up -d --no-deps --force-recreate --wait "$svc" &&
+    echo "dev-rebuild: $svc runs ${sha:0:7}"
+}
+dev-build()   { dev-rebuild "$@"; }                         # old names, same thing
+dev-run()     { dev-rebuild "$@"; }
 dev-stop()    { _dc stop "${1:?service}"; }
 dev-hosts()   { "$DEV_HOME/scripts/setup-hosts.sh"; }
 dev-add()     { "$DEV_HOME/scripts/add-service.sh" "$@"; }
@@ -27,7 +46,7 @@ dev-help() {
   cat <<'HELP'
 dev-up [svc..]   start Postgres, Keycloak, LocalStack (and the named services)
 dev-up-all       infrastructure + every service in docker-compose.services.yml
-dev-run <svc>    mvn package ../<svc>, build its image, start it
+dev-rebuild <svc> rebuild ../<svc> at its HEAD and restart only it (labels the image)
 dev-stop <svc>   stop one service          dev-down   stop everything (data kept)
 dev-reset        stop and DELETE all data  dev-ps     what runs
 dev-logs [svc]   follow logs               dev-psql [db]   psql as postgres

@@ -102,6 +102,12 @@ Two or three sentences.
 The request → response pairs from verify.md that show the ticket working,
 copied as they are (the most telling ones, at most five).
 
+## Behaviour change
+What existing callers will see differently after the merge: intake.md's
+`## Behaviour change`, corrected by what the code really does, plus any API
+change a reviewer pointed out (use their suggested sentence). `none` if
+nothing. The factory adds this section to the PR description before merging.
+
 ## For the human
 Only when you escalate: the exact decision or check you need from them, and the
 files to look at.

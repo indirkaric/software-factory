@@ -43,8 +43,15 @@ line per app: `APP: <service> changed|caller <base URL> db <db> log <path>`.
 - `caller` apps are services next to them that call a changed one, booted
   from their base branch. They show whether the change breaks a caller.
 
+`up` stops with exit 3 and `PREFLIGHT: BLOCKED …` or `UP: BLOCKED …` (with
+`NEEDS:` lines) when the environment lacks what the specs need, for example a
+dependency's container running an image without a required commit, or a
+client missing from `platform.md`. That is a SKIP, never a FAIL.
+
 Each app gets its own port and database. Apps call each other on their run
-ports, so use the printed base URLs and never a port from the code. A property
+ports, so use the printed base URLs and never a port from the code. `up`
+already points every other `client.<svc>.base-uri` at that service's
+published port on localhost (from `platform.md`); don't override it. A property
 for one app: `--arg <service>:key=value`; for all apps: `--arg key=value`.
 LocalStack is `http://localhost:<AWS_PORT in the development repo's .env,
 default 4566>` (region `eu-west-1`, keys `test`/`test`, bucket `factory-local`).
@@ -68,7 +75,8 @@ When something fails, read the end of that app's log for the cause.
 
 ````markdown
 VERIFY: PASS | FAIL | SKIP
-FAULT: <service>[, <service>]
+FAULT: <service>[, <service>] | environment
+NEEDS: <what the environment lacks>   (SKIP only; one line each)
 
 ## Summary
 - 3 to 5 short bullets
@@ -112,11 +120,21 @@ Verdicts:
   specs say, `SMOKE: PASS`, and `## Proof` has a ✅ block for every step.
 - `FAIL` in every other case where `up` didn't exit 3. That covers an app
   that doesn't start, Liquibase failing, a wrong call, or a BROKEN smoke line.
-- `SKIP` only when `up` exits 3 (docker or the development repo missing).
+- `SKIP` when `up` exits 3, and whenever a dependency or the infrastructure
+  doesn't meet a precondition of the specs: a service the task doesn't change
+  runs old code (a 404 on an endpoint the spec says it already has, a field
+  it lacks), Keycloak or Postgres unreachable, no token. Never FAIL for that:
+  `FAIL` is only for a proven defect in a changed service.
 
-The `FAULT` line goes in only for FAIL. It names the changed services
-whose code must change, by the names in the APP lines. A broken `caller` app
-is the fault of the changed service it calls. When you can't tell, name every
-changed service.
+`FAULT` goes in for FAIL and SKIP. FAIL: the changed services whose code must
+change, by the names in the APP lines; a broken `caller` app is the fault of
+the changed service it calls; when you can't tell, name every changed
+service. SKIP: `FAULT: environment` plus one `NEEDS:` line per missing
+precondition, copied from the `NEEDS:` lines `up` printed or written the same
+way: `NEEDS: identity >= 8a5d589`, `NEEDS: keycloak on :8080`, `NEEDS:
+docker`. In `## Why`, say what to start or rebuild (`dev-rebuild <service>`
+in the development repo, never a raw `docker compose -f …`). The factory
+keeps the job in verify on the same commit and round; nothing goes back to
+the builder.
 
 When you're done, reply with one line: the first line of the report.

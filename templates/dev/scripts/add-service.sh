@@ -57,4 +57,4 @@ ALTER DATABASE \"$DB\" OWNER TO ${DB}_app;"
 fi
 grep -qxF "$NAME.factory.local" "$DEV/scripts/hosts.txt" || echo "$NAME.factory.local" >> "$DEV/scripts/hosts.txt"
 [[ -f "$DEV/../$NAME/permissions.txt" ]] && python3 "$DEV/scripts/realm.py" sync "$DEV/../$NAME"
-echo "add-service: $NAME on port $PORT${DB:+, database $DB} (dev-run $NAME; dev-hosts to refresh /etc/hosts)"
+echo "add-service: $NAME on port $PORT${DB:+, database $DB} (dev-rebuild $NAME; dev-hosts to refresh /etc/hosts)"
