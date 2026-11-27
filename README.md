@@ -64,6 +64,9 @@ is never written to, so `update` always fast-forwards. Linux or WSL (macOS: unte
 /software-factory run 1 --ref ~/old/billing   … with a local project as the example
 /software-factory issues                open issues and their jobs
 /software-factory context               (re)write CLAUDE.md from the code
+/software-factory retro                 learn from ended jobs (also after every run)
+/software-factory lessons               accept or drop the proposed lessons
+/software-factory stats                 first-pass rate, rounds, who sends jobs back, trend
 ```
 
 **Reference project** (optional): `--ref <path>` names a local project the agents read as an

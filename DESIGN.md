@@ -33,6 +33,7 @@ Pipeline, state machine, gate and routing come from zazencodes' software-factory
 | Package | company package | `<BASE_PACKAGE>.<x>`, default `com.<user>` | nobody's name is built in |
 | Registry | in the factory repo, pushed by `new` | `<development repo>/platform.md` | the factory repo stays read-only for its users |
 | CI | GitLab | `.github/workflows/ci.yml` | `mvn verify` on every push; migrations tested |
+| Learning | lessons lived only in each job's folder | `sf-retro` + `job retro/lessons/stats` | later jobs get what earlier ones learned |
 
 ## The verify stage
 
@@ -113,6 +114,29 @@ verify stage migrates an empty database from zero.
 Suggestions for the existing services: move to unique changeset ids for new files (old ones
 stay as they are, they have run); fix the table-wiping rollbacks; replace `\` in includes;
 add the CI rollback test; for renames and drops use expand/contract over two releases.
+
+## Learning loop
+
+Every job used to start from the same prompts and CLAUDE.md, so what a job learned the hard way
+(a CHANGES review, a failed local check, the user's feedback, an escalation) stayed in its folder.
+Now, after a run, `job retro` closes clean jobs (one round, nothing sent back, no human) without
+an agent and lists the rest; `sf-retro` (Sonnet) reads each one's files and writes `retro.md`:
+what went wrong, the cause, and at most 5 lessons (`NEW service:`, `NEW factory:`, `SEEN L<k>`),
+each tagged with the agent it is for. `job retro <job>` files them in `factory/lessons.json`
+as proposed (deduplicated; `SEEN` adds the job as evidence).
+
+Only the user accepts a lesson (`job lessons accept`). Accepted service lessons are rendered to
+`factory/lessons.md`, which intake, spec-writer, builder, reviewers and verifier read next to
+CLAUDE.md (CLAUDE.md wins; reviewers cite a broken lesson); at most 40, so the file stays a
+list of rules, not a diary. A lesson seen in 3+ jobs is offered for CLAUDE.md, where the
+whole team gets it (`factory/` is local to the machine). Factory lessons go to
+`factory/backlog.md`, for this repo. `job stats` gives the numbers that say whether any of it
+helps: first-pass rate, rounds, feedback and escalation rates, who sends jobs back, earlier vs
+later half.
+
+Rejected: agents editing their own prompts, `checks.sh` or review rules (a loop without a human
+drifts, and a lesson that relaxes a check would let it pass its own gate); lessons applied
+without the user; a lesson store per agent (one file is easier to read and prune).
 
 ## MCP
 

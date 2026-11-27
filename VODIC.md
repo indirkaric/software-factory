@@ -168,6 +168,13 @@ cd factory && python3 -m http.server
 
 http://localhost:8000/dashboard.html: svaki job, runde, review-i, cijena, vrijeme.
 
+### D7. Učenje
+
+Nakon run-a `sf-retro` pročita svaki job koji je koštao rundu ili čovjeka i predloži lekcije.
+Ti ih prihvatiš ili odbaciš (`/software-factory lessons`): prihvaćene idu u `factory/lessons.md`
+(čitaju ih svi agenti servisa), a one o samoj fabrici u `factory/backlog.md`.
+`/software-factory stats` pokaže da li je bolje: first-pass, runde, ko najčešće vraća jobove.
+
 ## Postojeći projekat
 
 Otvori Claude Code u njemu i pokreni `/software-factory run`. Ako nema `CLAUDE.md`, factory ga

@@ -63,6 +63,9 @@ piše, pa `update` uvijek prođe. Linux ili WSL (macOS nije testiran).
 /software-factory run 1 --ref ~/old/billing   … s lokalnim projektom kao primjerom
 /software-factory issues                otvoreni issue-i i njihovi jobovi
 /software-factory context               (ponovo) napiši CLAUDE.md iz koda
+/software-factory retro                 nauči iz završenih jobova (i nakon svakog run-a)
+/software-factory lessons               prihvati ili odbaci predložene lekcije
+/software-factory stats                 first-pass, runde, ko vraća jobove, trend
 ```
 
 **Referentni projekat** (opcionalno): `--ref <putanja>` je lokalni projekat koji agenti čitaju

@@ -110,6 +110,10 @@ and registers the service in the development repo (compose, database, host alias
    branch?". On yes it opens an issue and a job there, tests both services together (plus
    the services that call them, from `main`) and merges the called one first.
 7. Dashboard: `cd factory && python3 -m http.server` → http://localhost:8000/dashboard.html.
+8. Learning: after a run, `sf-retro` reads every job that cost a round or a human and proposes
+   lessons. You accept or drop them (`/software-factory lessons`); accepted ones go to
+   `factory/lessons.md`, which every agent of the service reads, and factory ones to
+   `factory/backlog.md`. `/software-factory stats` shows whether it is getting better.
 
 ## An existing project
 

@@ -17,6 +17,9 @@ through the `verify` script.
 
 ## Read
 
+`<main checkout>/factory/lessons.md`, if it exists: lessons from this service's earlier
+jobs, accepted by the operator. Follow those tagged `[verifier]` or `[all]` like CLAUDE.md rules; CLAUDE.md wins on conflict.
+
 1. With a `Task:` line: `task.md`. Its table lists each job of the task:
    service, job id, branch, worktree. The job folder of a row is
    `<repo>/factory/jobs/<job>/`, where `<repo>` is the worktree's path up to

@@ -28,6 +28,9 @@ is in the main checkout; your one file goes there.
 
 ## Read
 
+`<main checkout>/factory/lessons.md`, if it exists: lessons from this service's earlier
+jobs, accepted by the operator. Follow those tagged `[reviewer-api]` or `[all]` like CLAUDE.md rules; a change that breaks one is a finding (cite its id).
+
 1. `CLAUDE.md` in the worktree (none there: `<main checkout>/CLAUDE.md`): the package layout and the non-negotiable
    rules. Its "Agent behavior" output blocks (`## VERDIKT: APPROVE | WARNING |
    BLOCK` and the like) are for the interactive agents; in the factory, this

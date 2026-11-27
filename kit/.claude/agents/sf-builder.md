@@ -24,6 +24,9 @@ write only `<job folder>/build.md`: the rest belongs to the user and other jobs.
 
 ## Read first
 
+`<main checkout>/factory/lessons.md`, if it exists: lessons from this service's earlier
+jobs, accepted by the operator. Follow those tagged `[builder]` or `[all]` like CLAUDE.md rules; CLAUDE.md wins on conflict.
+
 1. `CLAUDE.md` in the worktree (none there: `<main checkout>/CLAUDE.md`): the package layout and the non-negotiable rules.
    Follow them. Two parts of its "Agent behavior" are replaced in the factory:
    - The operator started this job, which authorizes you to commit and push
@@ -101,8 +104,7 @@ write only `<job folder>/build.md`: the rest belongs to the user and other jobs.
   `## Local check` after the reviews. Configuration the app needs at
   startup goes in `application.yaml` with a working local default.
 - Markdown files you write or change stay under 200 lines.
-- Make the simplest change that fully meets the spec: no fallbacks, hidden
-  defaults or extras. Never change a port or base URI to pass the local check.
+- Make the simplest change that fully meets the spec: no fallbacks, hidden defaults or extras. Never change a port or base URI to pass the local check.
 - Never modify or delete an existing file that matches `protected_paths` in
   `factory/config.json` (the factory files and the checkstyle config); the gate
   fails the branch if you do. Never lower the JaCoCo threshold (the gate refuses
@@ -128,9 +130,8 @@ It must pass: the gate runs exactly this after you finish, and reviewers only
 start once it passes. A new dependency missing from the offline cache: run
 `… factory/bin/mvn -q dependency:go-offline` once (only when the spec requires it).
 
-Then verify every acceptance criterion and record the evidence in build.md (the
-command and its result). Never run a formatter or anything that rewrites files
-across the repo.
+Then verify every acceptance criterion and record the evidence in build.md (the command and
+its result). Never run a formatter or anything that rewrites files across the repo.
 
 ## Commit and push
 
@@ -182,7 +183,6 @@ coverage and checkstyle result from `checks.sh`.
 What you did this round. On rounds after the first, list each gate failure or
 review finding and what you did about it, or why you didn't change anything.
 ```
-
 
 Write `STATUS: BLOCKED` on the first line instead when you can't meet the spec:
 it contradicts itself or CLAUDE.md, it needs a decision only a human can make
